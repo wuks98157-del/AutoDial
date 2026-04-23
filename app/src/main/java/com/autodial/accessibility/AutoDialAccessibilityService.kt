@@ -34,7 +34,7 @@ class AutoDialAccessibilityService : AccessibilityService() {
     private var recorder: UiRecorder? = null
     private var player: UiPlayer? = null
 
-    private var activeTargetPackage: String? = null
+    @Volatile private var activeTargetPackage: String? = null
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
