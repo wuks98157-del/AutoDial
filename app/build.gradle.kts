@@ -98,6 +98,8 @@ dependencies {
 
     implementation(libs.coroutines.android)
 
+    implementation("androidx.savedstate:savedstate-ktx:1.2.1")
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation("org.robolectric:robolectric:4.13")
