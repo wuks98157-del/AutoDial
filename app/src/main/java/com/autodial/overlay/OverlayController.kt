@@ -20,17 +20,22 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.*
+import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.autodial.model.RunState
 import com.autodial.service.RunForegroundService
+import kotlinx.coroutines.delay
 
 class OverlayController(private val context: Context) {
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: ComposeView? = null
-    private val lifecycleOwner = SimpleLifecycleOwner()
+
+    // Nullable var so a fresh instance is created on each show() call (Fix 2)
+    private var lifecycleOwner: SimpleLifecycleOwner? = null
 
     private var overlayX = 0
     private var overlayY = 200
@@ -45,8 +50,17 @@ class OverlayController(private val context: Context) {
     }
 
     private fun show() {
-        lifecycleOwner.start()
-        val view = ComposeView(context).apply {
+        // Fix 2 — create a fresh owner each time so LifecycleRegistry is never reused
+        val owner = SimpleLifecycleOwner().also { it.start() }
+        lifecycleOwner = owner
+
+        val view = ComposeView(context)
+
+        // Fix 1 — set ViewTree owners before setContent is called
+        view.setViewTreeLifecycleOwner(owner)
+        view.setViewTreeSavedStateRegistryOwner(owner)
+
+        view.apply {
             setViewCompositionStrategy(
                 androidx.compose.ui.platform.ViewCompositionStrategy.DisposeOnDetachedFromWindow
             )
@@ -86,9 +100,13 @@ class OverlayController(private val context: Context) {
     }
 
     fun dismiss() {
-        overlayView?.let { windowManager.removeView(it) }
+        // Fix 2 + Fix 3 — guard against dismiss() before show() (lifecycleOwner is null)
+        // Fix double removeView race — null overlayView before removeView, catch IllegalArgumentException
+        val view = overlayView ?: return
         overlayView = null
-        lifecycleOwner.stop()
+        try { windowManager.removeView(view) } catch (_: IllegalArgumentException) {}
+        lifecycleOwner?.stop()
+        lifecycleOwner = null
     }
 
     private fun updateLayoutPosition() {
@@ -98,9 +116,8 @@ class OverlayController(private val context: Context) {
         windowManager.updateViewLayout(view, params)
     }
 
-    private fun RunState.isActive(): Boolean =
-        this !is RunState.Idle && this !is RunState.Completed &&
-        this !is RunState.StoppedByUser && this !is RunState.Failed
+    // Removed duplicate private RunState.isActive() extension — the public one from RunState.kt
+    // is used directly in updateState() above.
 
     private inner class SimpleLifecycleOwner : LifecycleOwner, SavedStateRegistryOwner {
         private val registry = LifecycleRegistry(this)
@@ -117,11 +134,28 @@ class OverlayController(private val context: Context) {
         }
 
         fun stop() {
+            // Fix 3 — guard against stop() being called before start() (INITIALIZED state)
+            if (registry.currentState == Lifecycle.State.INITIALIZED) return
             registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
             registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
             registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         }
     }
+}
+
+// Fix 4 — ticking helper composable so InCall countdown updates every second
+@Composable
+private fun rememberInCallText(state: RunState.InCall): Pair<String, String> {
+    var remaining by remember(state.hangupAt) {
+        mutableStateOf(((state.hangupAt - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L))
+    }
+    LaunchedEffect(state.hangupAt) {
+        while (remaining > 0L) {
+            delay(1_000L)
+            remaining = ((state.hangupAt - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+        }
+    }
+    return "Cycle ${state.cycle + 1} · ${remaining}s" to state.params.number
 }
 
 @Composable
@@ -130,15 +164,15 @@ private fun OverlayBubble(
     onStop: () -> Unit,
     onDrag: (Float, Float) -> Unit
 ) {
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+    // Removed unused offsetX / offsetY vars
+
+    // Fix 4 — call rememberInCallText() outside the when expression (LaunchedEffect needs
+    // a stable composable call site, not one buried inside a branch)
+    val inCallText: Pair<String, String>? = if (state is RunState.InCall) rememberInCallText(state) else null
 
     val (line1, line2) = when (state) {
         is RunState.TypingDigits -> "Cycle ${state.cycle + 1}" to "Dialing ${state.params.number}"
-        is RunState.InCall -> {
-            val remaining = ((state.hangupAt - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
-            "Cycle ${state.cycle + 1} · ${remaining}s" to state.params.number
-        }
+        is RunState.InCall -> inCallText!!
         is RunState.HangingUp -> "Hanging up" to ""
         is RunState.ReturningToDialPad -> "Returning to dial pad" to ""
         else -> "" to ""
