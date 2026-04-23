@@ -46,7 +46,7 @@ class UiRecorder(
 
         val resourceId = node.viewIdResourceName
         val text = node.text?.toString()
-        val className = node.className?.toString() ?: ""
+        val className = node.className?.toString()
         val bounds = android.graphics.Rect()
         node.getBoundsInScreen(bounds)
 
