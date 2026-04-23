@@ -8,5 +8,6 @@ class Converters {
     fun fromRunStatus(status: RunStatus): String = status.name
 
     @TypeConverter
-    fun toRunStatus(value: String): RunStatus = RunStatus.valueOf(value)
+    fun toRunStatus(value: String): RunStatus =
+        runCatching { RunStatus.valueOf(value) }.getOrDefault(RunStatus.FAILED)
 }
