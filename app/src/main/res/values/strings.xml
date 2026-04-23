@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AutoDial</string>
+    <string name="accessibility_service_description">AutoDial uses Android\'s accessibility service to tap buttons inside BizPhone and Mobile VOIP on your behalf, placing and ending VoIP calls as configured by the sales team. It only interacts with the buttons you teach it during the setup wizard and does not read or transmit any other screen content.</string>
+</resources>

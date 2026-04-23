@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AutoDial" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <item name="postSplashScreenTheme">@style/Theme.AutoDial.NoBar</item>
+    </style>
+    <style name="Theme.AutoDial.NoBar" parent="android:Theme.Material.NoTitleBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

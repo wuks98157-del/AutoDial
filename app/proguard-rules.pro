@@ -1,0 +1,5 @@
+-keep class com.autodial.data.db.entity.** { *; }
+-keep class com.autodial.accessibility.** { *; }
+-keep class com.autodial.UserSettings { *; }
+-keep class com.autodial.UserSettingsKt { *; }
+-dontwarn dagger.hilt.**
