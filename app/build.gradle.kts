@@ -48,6 +48,10 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     room {
         schemaDirectory("$projectDir/schemas")
     }
@@ -96,6 +100,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
+    testImplementation("org.robolectric:robolectric:4.13")
 
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.espresso)
