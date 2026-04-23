@@ -2,6 +2,7 @@ package com.autodial.oem
 
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 
 data class OemSetting(
     val id: String,
@@ -82,7 +83,10 @@ class OemCompatibilityHelper private constructor(
             description = "Settings → Apps → Auto launch → enable AutoDial",
             canVerify = false, verify = null,
             deepLinkIntent = Intent().apply {
-                action = "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+                component = ComponentName(
+                    "com.coloros.safecenter",
+                    "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+                )
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         ),
@@ -128,6 +132,7 @@ class OemCompatibilityHelper private constructor(
             description = "Settings → Apps → AutoDial → Battery → Unrestricted",
             canVerify = false, verify = null,
             deepLinkIntent = Intent("android.settings.APPLICATION_DETAILS_SETTINGS").apply {
+                data = Uri.fromParts("package", "com.autodial", null)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         ),
