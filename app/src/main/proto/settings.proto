@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+option java_package = "com.autodial";
+option java_multiple_files = true;
+
+message UserSettings {
+  int32 default_hangup_seconds = 1;
+  int32 default_cycles = 2;
+  string default_target_package = 3;
+  int32 spam_mode_safety_cap = 4;
+  int32 inter_digit_delay_ms = 5;
+  int32 overlay_x = 6;
+  int32 overlay_y = 7;
+  int64 onboarding_completed_at = 8;
+  bool verbose_logging_enabled = 9;
+}
