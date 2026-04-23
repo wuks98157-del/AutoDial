@@ -59,6 +59,7 @@ class RunForegroundService : Service() {
     private var overlayController: OverlayController? = null
     private var runId: Long = 0L
     private var currentParams: RunParams? = null
+    private var currentRunRecord: RunRecord? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -91,13 +92,15 @@ class RunForegroundService : Service() {
     private fun launchRun(params: RunParams) {
         scope.launch {
             val now = System.currentTimeMillis()
-            runId = historyRepo.startRun(RunRecord(
+            val record = RunRecord(
                 startedAt = now, endedAt = now,
                 number = params.number, targetPackage = params.targetPackage,
                 plannedCycles = params.plannedCycles, completedCycles = 0,
                 hangupSeconds = params.hangupSeconds,
                 status = RunStatus.DONE, failureReason = null
-            ))
+            )
+            runId = historyRepo.startRun(record)
+            currentRunRecord = record.copy(id = runId)
 
             val accessService = AutoDialAccessibilityService.instance
             if (accessService == null) {
@@ -164,8 +167,9 @@ class RunForegroundService : Service() {
                 val remaining = state.hangupAt - System.currentTimeMillis()
                 if (remaining > 0) delay(remaining)
                 val steps = recipeRepo.getSteps(state.params.targetPackage)
-                val root = accessService.rootInActiveWindow
-                val hangupStep = if (root != null && steps.any { it.stepId == "HANG_UP_CONNECTED" }) {
+                // After hangupSeconds the call should be connected; prefer HANG_UP_CONNECTED.
+                // Fall back to HANG_UP_RINGING only if no connected-hangup step was recorded.
+                val hangupStep = if (steps.any { it.stepId == "HANG_UP_CONNECTED" }) {
                     "HANG_UP_CONNECTED"
                 } else {
                     "HANG_UP_RINGING"
@@ -231,6 +235,14 @@ class RunForegroundService : Service() {
 
     private fun finishRun(status: RunStatus, reason: String?) {
         scope.launch {
+            currentRunRecord?.let { record ->
+                historyRepo.updateRun(record.copy(
+                    endedAt = System.currentTimeMillis(),
+                    completedCycles = currentCycle(),
+                    status = status,
+                    failureReason = reason
+                ))
+            }
             AutoDialAccessibilityService.instance?.endRun()
             overlayController?.dismiss()
             releaseWakeLock()

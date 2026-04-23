@@ -16,6 +16,8 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
 
     suspend fun logStepEvent(event: RunStepEvent) = dao.insertStepEvent(event)
 
+    suspend fun updateRun(run: RunRecord) = dao.updateRun(run)
+
     suspend fun getStepEvents(runId: Long): List<RunStepEvent> = dao.getStepEvents(runId)
 
     suspend fun clearAll() = dao.deleteAll()

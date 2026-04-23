@@ -19,6 +19,9 @@ interface HistoryDao {
     @Insert
     suspend fun insertStepEvent(event: RunStepEvent)
 
+    @Update
+    suspend fun updateRun(run: RunRecord)
+
     @Query("DELETE FROM runs")
     suspend fun deleteAll()
 
