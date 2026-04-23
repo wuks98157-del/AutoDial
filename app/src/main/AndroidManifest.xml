@@ -47,5 +47,10 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <service
+            android:name=".service.RunForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
     </application>
 </manifest>
