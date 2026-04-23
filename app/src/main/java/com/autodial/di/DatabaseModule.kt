@@ -24,8 +24,10 @@ object DatabaseModule {
             .build()
 
     @Provides
+    @Singleton
     fun provideRecipeDao(db: AutoDialDatabase): RecipeDao = db.recipeDao()
 
     @Provides
+    @Singleton
     fun provideHistoryDao(db: AutoDialDatabase): HistoryDao = db.historyDao()
 }
