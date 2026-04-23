@@ -108,6 +108,22 @@ class AutoDialAccessibilityService : AccessibilityService() {
 
     fun isBound(): Boolean = instance != null
 
+    fun startSelfCheckLoop() {
+        scope.launch {
+            while (true) {
+                delay(30_000L)
+                if (!selfCheck()) {
+                    _runEvents.emit(RunEvent.StepActionFailed("SELF_CHECK", "failed:accessibility-service-revoked"))
+                    break
+                }
+            }
+        }
+    }
+
+    fun stopSelfCheckLoop() {
+        // The loop exits naturally when the scope is cancelled or selfCheck() fails
+    }
+
     fun selfCheck(): Boolean {
         if (instance == null) return false
         return try {

@@ -109,6 +109,7 @@ class RunForegroundService : Service() {
             }
 
             accessService.beginRun(params)
+            accessService.startSelfCheckLoop()
             stateMachine.onCommand(RunCommand.Start(params, runId))
             _publicState.value = stateMachine.state.value
 
