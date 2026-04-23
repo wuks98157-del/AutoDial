@@ -29,7 +29,7 @@ class RunStateMachine {
             event is RunEvent.TargetForegrounded && s is RunState.LaunchingTarget ->
                 _state.value = RunState.OpeningDialPad(s.params, 0)
 
-            event is RunEvent.TargetBackgrounded && s.isActive() ->
+            event is RunEvent.TargetBackgrounded && s.isActive() && s !is RunState.LaunchingTarget ->
                 _state.value = RunState.Failed(runId, "failed:target-app-closed")
 
             event is RunEvent.StepActionFailed ->
@@ -78,13 +78,10 @@ class RunStateMachine {
     private fun handleStop() {
         val s = _state.value
         if (s.isTerminal() || s is RunState.Idle) return
-        if (s is RunState.InCall || s is RunState.PressingCall) {
-            _state.value = RunState.HangingUp(
-                (s as? RunState.InCall)?.params ?: (s as RunState.PressingCall).params,
-                (s as? RunState.InCall)?.cycle ?: (s as RunState.PressingCall).cycle
-            )
-        } else {
-            _state.value = RunState.StoppedByUser(runId)
+        when (s) {
+            is RunState.InCall -> _state.value = RunState.HangingUp(s.params, s.cycle)
+            is RunState.PressingCall -> _state.value = RunState.HangingUp(s.params, s.cycle)
+            else -> _state.value = RunState.StoppedByUser(runId)
         }
     }
 
