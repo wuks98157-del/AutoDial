@@ -10,8 +10,8 @@ import com.autodial.data.db.entity.RecipeStep
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 sealed class StepOutcome {
     data class Ok(val outcome: String) : StepOutcome()
@@ -25,18 +25,20 @@ class UiPlayer(
 ) {
 
     suspend fun executeStep(step: RecipeStep): StepOutcome = withContext(Dispatchers.Default) {
+        val root = service.rootInActiveWindow
+
         // Tier 1: resourceId primary match
         if (step.resourceId != null) {
-            val root = service.rootInActiveWindow
             val nodes = root?.findAccessibilityNodeInfosByViewId(step.resourceId) ?: emptyList()
-            val node = nodes.firstOrNull { it.isVisibleToUser && it.className == step.className }
+            val node = nodes.firstOrNull {
+                it.isVisibleToUser && (step.className == null || it.className == step.className)
+            }
             if (node != null && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 return@withContext verify(step, "ok:node-primary")
             }
         }
 
         // Tier 2: text + class + bounds overlap > 50%
-        val root = service.rootInActiveWindow
         if (root != null && step.text != null) {
             val match = findByTextClassBounds(root, step)
             if (match != null && match.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
@@ -113,34 +115,33 @@ class UiPlayer(
         )
     }
 
-    private fun captureRegion(step: RecipeStep): Bitmap? {
-        var result: Bitmap? = null
-        val latch = CountDownLatch(1)
-        service.takeScreenshot(
-            android.view.Display.DEFAULT_DISPLAY,
-            { it.run() },
-            object : AccessibilityService.TakeScreenshotCallback {
-                override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
-                    val hw = screenshot.hardwareBuffer
-                    val full = Bitmap.wrapHardwareBuffer(hw, screenshot.colorSpace)
-                    if (full != null) {
-                        val soft = full.copy(Bitmap.Config.ARGB_8888, false)
-                        val left = (step.boundsRelX * screenW).toInt().coerceIn(0, screenW - 1)
-                        val top = (step.boundsRelY * screenH).toInt().coerceIn(0, screenH - 1)
-                        val w = (step.boundsRelW * screenW).toInt().coerceAtLeast(1)
-                            .coerceAtMost(screenW - left)
-                        val h = (step.boundsRelH * screenH).toInt().coerceAtLeast(1)
-                            .coerceAtMost(screenH - top)
-                        result = Bitmap.createBitmap(soft, left, top, w, h)
-                        soft.recycle()
+    private suspend fun captureRegion(step: RecipeStep): Bitmap? =
+        suspendCancellableCoroutine { cont ->
+            service.takeScreenshot(
+                android.view.Display.DEFAULT_DISPLAY,
+                { it.run() },
+                object : AccessibilityService.TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                        val hw = screenshot.hardwareBuffer
+                        val full = Bitmap.wrapHardwareBuffer(hw, screenshot.colorSpace)
+                        val crop = if (full != null) {
+                            val soft = full.copy(Bitmap.Config.ARGB_8888, false)
+                            full.recycle()
+                            val left = (step.boundsRelX * screenW).toInt().coerceIn(0, screenW - 1)
+                            val top = (step.boundsRelY * screenH).toInt().coerceIn(0, screenH - 1)
+                            val w = (step.boundsRelW * screenW).toInt().coerceAtLeast(1)
+                                .coerceAtMost(screenW - left)
+                            val h = (step.boundsRelH * screenH).toInt().coerceAtLeast(1)
+                                .coerceAtMost(screenH - top)
+                            val result = Bitmap.createBitmap(soft, left, top, w, h)
+                            soft.recycle()
+                            result
+                        } else null
+                        hw.close()
+                        cont.resume(crop)
                     }
-                    hw.close()
-                    latch.countDown()
+                    override fun onFailure(errorCode: Int) { cont.resume(null) }
                 }
-                override fun onFailure(errorCode: Int) { latch.countDown() }
-            }
-        )
-        latch.await(2, TimeUnit.SECONDS)
-        return result
-    }
+            )
+        }
 }
