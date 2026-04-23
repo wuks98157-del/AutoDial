@@ -3,3 +3,4 @@
 -keep class com.autodial.UserSettings { *; }
 -keep class com.autodial.UserSettingsKt { *; }
 -dontwarn dagger.hilt.**
+-keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
