@@ -1,6 +1,7 @@
 package com.autodial.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -11,6 +12,7 @@ import com.autodial.ui.history.HistoryScreen
 import com.autodial.ui.onboarding.OnboardingScreen
 import com.autodial.ui.onboarding.OnboardingViewModel
 import com.autodial.ui.settings.SettingsScreen
+import com.autodial.wizard.WizardLauncher
 
 @Composable
 fun NavGraph(navController: NavHostController, startDestination: String) {
@@ -18,6 +20,7 @@ fun NavGraph(navController: NavHostController, startDestination: String) {
 
         composable(Screen.Onboarding.route) {
             val vm: OnboardingViewModel = hiltViewModel()
+            val context = LocalContext.current
             OnboardingScreen(
                 vm = vm,
                 onComplete = {
@@ -25,16 +28,17 @@ fun NavGraph(navController: NavHostController, startDestination: String) {
                         popUpTo(Screen.Onboarding.route) { inclusive = true }
                     }
                 },
-                onOpenWizard = { pkg -> com.autodial.accessibility.AutoDialAccessibilityService.instance?.beginWizard(pkg) }
+                onOpenWizard = { pkg -> WizardLauncher.launch(context, pkg) }
             )
         }
 
         composable(Screen.Dialer.route) {
+            val context = LocalContext.current
             DialerScreen(
                 onNavigateToActiveRun = { navController.navigate(Screen.ActiveRun.route) },
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                 onNavigateToHistory = { navController.navigate(Screen.History.route) },
-                onBeginWizard = { pkg -> com.autodial.accessibility.AutoDialAccessibilityService.instance?.beginWizard(pkg) }
+                onBeginWizard = { pkg -> WizardLauncher.launch(context, pkg) }
             )
         }
 
@@ -45,8 +49,9 @@ fun NavGraph(navController: NavHostController, startDestination: String) {
         }
 
         composable(Screen.Settings.route) {
+            val context = LocalContext.current
             SettingsScreen(
-                onNavigateToWizard = { pkg -> com.autodial.accessibility.AutoDialAccessibilityService.instance?.beginWizard(pkg) },
+                onNavigateToWizard = { pkg -> WizardLauncher.launch(context, pkg) },
                 onNavigateUp = { navController.popBackStack() }
             )
         }
