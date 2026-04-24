@@ -51,6 +51,7 @@ class AutoDialAccessibilityService : AccessibilityService() {
     private var recipeWriter: WizardRecipeWriter? = null
     @Volatile private var wizardActivePackage: String? = null
     @Volatile private var lastCapturedForSave: Map<String, com.autodial.model.RecordedStep>? = null
+    private var wizardJob: Job? = null
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ class AutoDialAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        wizardStateMachine?.onEvent(WizardEvent.ServiceRevoked)
         instance = null
         scope.cancel()
         super.onDestroy()
@@ -177,40 +179,45 @@ class AutoDialAccessibilityService : AccessibilityService() {
         )
         sm.onCommand(WizardCommand.Start(targetPackage))
 
-        // Collect captures from UiRecorder into the state machine.
-        scope.launch {
-            recorder?.capturedSteps?.collect { recorded ->
-                sm.onEvent(WizardEvent.Captured(recorded))
-            }
-        }
-        // Subscribe to state flow: re-render overlay, re-arm UiRecorder, dismiss on terminal.
-        scope.launch {
-            sm.state.collect { state ->
-                overlay.updateState(state)
-                when (state) {
-                    is WizardState.Step ->
-                        recorder?.startCapturing(state.queue, state.targetPackage)
-                    is WizardState.AwaitingReturn ->
-                        recorder?.stopCapturing()
-                    WizardState.Cancelled, is WizardState.Completed -> {
-                        if (state is WizardState.Completed && state.recipeSaved == true) {
-                            kotlinx.coroutines.delay(2000L)
-                        }
-                        endWizard()
-                    }
-                    else -> {}
+        wizardJob = scope.launch {
+            // Collect captures from UiRecorder into the state machine.
+            launch {
+                recorder?.capturedSteps?.collect { recorded ->
+                    sm.onEvent(WizardEvent.Captured(recorded))
                 }
             }
-        }
-        // Subscribe to side-effect channel: autoWipe + save.
-        scope.launch {
-            sm.sideEffects.collect { effect ->
-                when (effect) {
-                    is WizardSideEffect.AutoWipeDialPad ->
-                        autoWipeDialPad(effect.clearStep, effect.targetPackage)
-                    is WizardSideEffect.SaveRecipe -> {
-                        lastCapturedForSave = effect.captured
-                        runSave(writer, effect.targetPackage, effect.captured, sm)
+            // Subscribe to state flow: re-render overlay, re-arm UiRecorder, dismiss on terminal.
+            launch {
+                sm.state.collect { state ->
+                    overlay.updateState(state)
+                    when (state) {
+                        is WizardState.Step ->
+                            recorder?.startCapturing(state.queue, state.targetPackage)
+                        is WizardState.AwaitingReturn ->
+                            recorder?.stopCapturing()
+                        is WizardState.Completed -> {
+                            if (state.recipeSaved != null) {
+                                if (state.recipeSaved) kotlinx.coroutines.delay(2000L)
+                                endWizard()
+                            }
+                            // Completed(recipeSaved = null) is transient "saving" — wait for
+                            // RecipeSaveResult to flip us to Completed(true/false) before tearing down.
+                        }
+                        WizardState.Cancelled -> endWizard()
+                        else -> {}
+                    }
+                }
+            }
+            // Subscribe to side-effect channel: autoWipe + save.
+            launch {
+                sm.sideEffects.collect { effect ->
+                    when (effect) {
+                        is WizardSideEffect.AutoWipeDialPad ->
+                            autoWipeDialPad(effect.clearStep, effect.targetPackage)
+                        is WizardSideEffect.SaveRecipe -> {
+                            lastCapturedForSave = effect.captured
+                            runSave(writer, effect.targetPackage, effect.captured, sm)
+                        }
                     }
                 }
             }
@@ -218,6 +225,8 @@ class AutoDialAccessibilityService : AccessibilityService() {
     }
 
     fun endWizard() {
+        wizardJob?.cancel()
+        wizardJob = null
         wizardOverlay?.dismiss()
         wizardOverlay = null
         wizardStateMachine = null
