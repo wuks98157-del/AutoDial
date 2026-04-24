@@ -23,7 +23,7 @@ fun DialerScreen(
     onNavigateToActiveRun: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToHistory: () -> Unit,
-    onNavigateToWizard: (String) -> Unit
+    onBeginWizard: (String) -> Unit
 ) {
     val state by vm.state.collectAsState()
 
@@ -78,7 +78,7 @@ fun DialerScreen(
                 bizPhoneHasRecipe = state.bizPhoneRecipe != null,
                 mobileVoipHasRecipe = state.mobileVoipRecipe != null,
                 onSelect = { vm.setTarget(it) },
-                onSetupWizard = onNavigateToWizard
+                onSetupWizard = onBeginWizard
             )
 
             Row(verticalAlignment = Alignment.CenterVertically,

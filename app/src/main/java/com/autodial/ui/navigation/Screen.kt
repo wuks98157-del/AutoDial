@@ -6,7 +6,4 @@ sealed class Screen(val route: String) {
     object ActiveRun : Screen("active_run")
     object Settings : Screen("settings")
     object History : Screen("history")
-    data class Wizard(val targetPackage: String) : Screen("wizard/$targetPackage") {
-        companion object { const val ROUTE = "wizard/{targetPackage}" }
-    }
 }
