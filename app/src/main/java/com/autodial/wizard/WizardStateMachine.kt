@@ -190,22 +190,16 @@ class WizardStateMachine {
         _state.value = s.copy(recipeSaved = success, error = error)
     }
 
-    // Detect "same-button-captured-twice" — primary case is BizPhone's call-start
-    // being captured as the in-call end button due to fast transition.
+    // Originally detected BizPhone's call-start tap being mis-captured as the
+    // in-call end button (both share resourceId clearCallButton). That failure
+    // mode no longer occurs: HANG_UP is not recorded in the wizard anymore
+    // (both BizPhone and Mobile VOIP use HangupStrategy paths at runtime), so
+    // the specific collision this check existed for can't happen. In practice
+    // it was firing false positives during step 4 on both targets and
+    // confusing users. Disabled until a legitimate collision case reappears.
+    @Suppress("UNUSED_PARAMETER")
     private fun findDuplicateWarning(
         step: RecordedStep,
         captured: Map<String, RecordedStep>
-    ): String? {
-        val rid = step.resourceId ?: return null
-        val match = captured.values.firstOrNull { prior ->
-            prior.stepId != step.stepId &&
-            prior.resourceId == rid &&
-            kotlin.math.abs(prior.boundsRelX - step.boundsRelX) < 0.02f &&
-            kotlin.math.abs(prior.boundsRelY - step.boundsRelY) < 0.02f
-        } ?: return null
-        return "This capture looks identical to ${match.stepId} (same id, same position). " +
-               "On BizPhone this usually means the call button tap was too fast and we " +
-               "caught the in-call end button instead. Re-record with AIRPLANE MODE ON " +
-               "so BizPhone can't transition away mid-tap."
-    }
+    ): String? = null
 }

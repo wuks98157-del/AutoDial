@@ -169,28 +169,10 @@ class WizardStateMachineTest {
         assertEquals((1..9).map { "DIGIT_$it" }, s.queue)
     }
 
-    @Test fun duplicatePressCallTriggersDuplicateWarning() = runTest {
-        sm.onCommand(WizardCommand.Start(pkg))
-        sm.onEvent(WizardEvent.Captured(step("OPEN_DIAL_PAD")))
-        (0..9).forEach { sm.onEvent(WizardEvent.Captured(step("DIGIT_$it"))) }
-        sm.onEvent(WizardEvent.Captured(step("CLEAR_DIGITS", rid = "shared", relX = 0.5f, relY = 0.5f)))
-        sm.onEvent(WizardEvent.Captured(step("PRESS_CALL", rid = "shared", relX = 0.5f, relY = 0.5f)))
-        val s = sm.state.value
-        assertTrue("expected DuplicateWarning, got $s", s is WizardState.DuplicateWarning)
-    }
-
-    @Test fun reRecordFromDuplicateRestoresStepWithoutPressCall() = runTest {
-        sm.onCommand(WizardCommand.Start(pkg))
-        sm.onEvent(WizardEvent.Captured(step("OPEN_DIAL_PAD")))
-        (0..9).forEach { sm.onEvent(WizardEvent.Captured(step("DIGIT_$it"))) }
-        sm.onEvent(WizardEvent.Captured(step("CLEAR_DIGITS", rid = "shared", relX = 0.5f, relY = 0.5f)))
-        sm.onEvent(WizardEvent.Captured(step("PRESS_CALL", rid = "shared", relX = 0.5f, relY = 0.5f)))
-        sm.onCommand(WizardCommand.ReRecord)
-        val s = sm.state.value as WizardState.Step
-        assertEquals(MacroStep.PRESS_CALL, s.macro)
-        assertEquals(listOf("PRESS_CALL"), s.queue)
-        assertFalse(s.captured.containsKey("PRESS_CALL"))
-    }
+    // Duplicate-warning path is currently disabled (findDuplicateWarning
+    // returns null). It was firing false positives during normal wizard
+    // usage. Keeping the Step machinery + ReRecord command for future
+    // collision cases, but no behavioural tests until it's re-enabled.
 
     @Test fun serviceRevokedDuringWizardTransitionsToCancelled() = runTest {
         sm.onCommand(WizardCommand.Start(pkg))
