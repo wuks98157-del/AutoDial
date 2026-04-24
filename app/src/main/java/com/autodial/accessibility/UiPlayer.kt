@@ -145,6 +145,11 @@ class UiPlayer(
 
     companion object {
         private const val TAG = "AutoDial"
+        // Hash verification adds ~300ms + a screenshot capture to every tap
+        // (14+ taps per cycle). It's diagnostic-only — mismatches are logged
+        // but never fail the run — so we disable it by default for speed.
+        // Flip to true during development to investigate playback drift.
+        private const val VERIFY_ENABLED = false
     }
 
     private suspend fun verify(step: RecipeStep, successOutcome: String): StepOutcome {
@@ -153,6 +158,7 @@ class UiPlayer(
         // post-click region enough to trip a strict hamming threshold, but that
         // doesn't mean the wrong thing was tapped. We record mismatches in history
         // (useful for debugging drift after an app update) but never fail the run.
+        if (!VERIFY_ENABLED) return StepOutcome.Ok(successOutcome)
         if (step.screenshotHashHex == null) return StepOutcome.Ok(successOutcome)
         delay(300)
         val storedHash = PhashUtil.fromHex(step.screenshotHashHex)

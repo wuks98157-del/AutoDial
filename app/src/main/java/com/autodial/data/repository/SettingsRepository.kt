@@ -19,7 +19,7 @@ class SettingsRepository @Inject constructor(private val dataStore: DataStore<Pr
             defaultCycles = prefs[SettingsKeys.CYCLES] ?: 10,
             defaultTargetPackage = prefs[SettingsKeys.TARGET_PACKAGE] ?: "com.b3networks.bizphone",
             spamModeSafetyCap = prefs[SettingsKeys.SAFETY_CAP] ?: 9999,
-            interDigitDelayMs = prefs[SettingsKeys.INTER_DIGIT_DELAY_MS] ?: 400,
+            interDigitDelayMs = prefs[SettingsKeys.INTER_DIGIT_DELAY_MS] ?: 250,
             overlayX = prefs[SettingsKeys.OVERLAY_X] ?: 0,
             overlayY = prefs[SettingsKeys.OVERLAY_Y] ?: 200,
             onboardingCompletedAt = prefs[SettingsKeys.ONBOARDING_COMPLETED_AT] ?: 0L,

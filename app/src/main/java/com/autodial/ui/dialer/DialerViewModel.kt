@@ -23,7 +23,7 @@ data class DialerUiState(
     val targetPackage: String = "com.b3networks.bizphone",
     val spamMode: Boolean = false,
     val spamModeSafetyCap: Int = 9999,
-    val interDigitDelayMs: Long = 400L,
+    val interDigitDelayMs: Long = 250L,
     val bizPhoneRecipe: Recipe? = null,
     val mobileVoipRecipe: Recipe? = null,
     val isRunActive: Boolean = false,

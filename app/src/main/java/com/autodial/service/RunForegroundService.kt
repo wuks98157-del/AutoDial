@@ -161,22 +161,22 @@ class RunForegroundService : Service() {
             }
 
             is RunState.OpeningDialPad -> {
-                // The state machine arrives here the instant ANY BizPhone window
-                // appears — which includes the splash / login activity before the
-                // real UI has mounted. Tapping OPEN_DIAL_PAD at that moment lands
-                // on nothing useful and the run marches on tapping random pixels.
-                // Wait for the first launch screen to settle into a real activity
-                // before firing the tap, then give the post-tap animation time.
-                Log.d(TAG, "OpeningDialPad: initial 1800ms settle")
-                delay(1800L)
+                // The state machine arrives here the instant ANY target-app window
+                // appears — which may include the splash / login activity before
+                // the real UI has mounted. Tapping OPEN_DIAL_PAD at that moment
+                // lands on nothing useful. A brief settle + waitForRecordedNode
+                // polling (200 ms cadence, 2500 ms budget) reliably catches the
+                // real dial pad. The post-tap delay lets the open animation run.
+                Log.d(TAG, "OpeningDialPad: initial 800ms settle")
+                delay(800L)
                 waitForRecordedNode(state.params.targetPackage, "OPEN_DIAL_PAD", 2500L, accessService)
                 executeStep("OPEN_DIAL_PAD", state.params, accessService)
-                delay(900L)
+                delay(400L)
             }
 
             is RunState.EnteringNumber -> {
                 setNumber(state.params, accessService)
-                delay(300L)
+                delay(200L)
             }
 
             is RunState.PressingCall -> {
@@ -217,8 +217,10 @@ class RunForegroundService : Service() {
                     TargetApps.HangupStrategy.RecordedStep ->
                         executeStep("HANG_UP", state.params, accessService)
                 }
-                // inter-cycle settle
-                delay(600L)
+                // inter-cycle settle — short pause after hangup before the
+                // next cycle's PressingCall. waitForRecordedNode(PRESS_CALL)
+                // picks up any residual transition delay.
+                delay(300L)
             }
 
             is RunState.HangingUp -> { /* driven by IN_CALL above */ }
@@ -513,7 +515,7 @@ class RunForegroundService : Service() {
             plannedCycles = getIntExtra("plannedCycles", 10),
             hangupSeconds = getIntExtra("hangupSeconds", 25),
             spamModeSafetyCap = getIntExtra("spamModeSafetyCap", 9999),
-            interDigitDelayMs = getLongExtra("interDigitDelayMs", 400L)
+            interDigitDelayMs = getLongExtra("interDigitDelayMs", 250L)
         )
     }
 }
