@@ -7,13 +7,14 @@ import androidx.compose.ui.graphics.Color
 private val DarkColorScheme = darkColorScheme(
     primary = Orange,
     onPrimary = Color.Black,
-    secondary = OrangeLight,
+    secondary = Orange,
     background = BackgroundDark,
     surface = SurfaceDark,
     surfaceVariant = SurfaceVariantDark,
     onBackground = OnSurfaceDark,
     onSurface = OnSurfaceDark,
     onSurfaceVariant = OnSurfaceVariantDark,
+    outline = BorderDark,
     error = Red,
 )
 
