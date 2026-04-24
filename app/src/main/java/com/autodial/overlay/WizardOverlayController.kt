@@ -6,20 +6,14 @@ import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.savedstate.SavedStateRegistry
-import androidx.savedstate.SavedStateRegistryController
-import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.autodial.wizard.WizardState
 
 class WizardOverlayController(private val context: Context) {
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: ComposeView? = null
-    private var lifecycleOwner: SimpleLifecycleOwner? = null
+    private var lifecycleOwner: OverlaySimpleLifecycleOwner? = null
 
     private var overlayX = 40
     private var overlayY = 140
@@ -43,7 +37,7 @@ class WizardOverlayController(private val context: Context) {
         this.onReRecord = onReRecord
         this.onRetrySave = onRetrySave
 
-        val owner = SimpleLifecycleOwner().also { it.start() }
+        val owner = OverlaySimpleLifecycleOwner().also { it.start() }
         lifecycleOwner = owner
 
         val view = ComposeView(context)
@@ -102,23 +96,4 @@ class WizardOverlayController(private val context: Context) {
         wm.updateViewLayout(v, p)
     }
 
-    private inner class SimpleLifecycleOwner : LifecycleOwner, SavedStateRegistryOwner {
-        private val registry = LifecycleRegistry(this)
-        private val savedStateController = SavedStateRegistryController.create(this)
-        override val lifecycle: Lifecycle get() = registry
-        override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
-        fun start() {
-            savedStateController.performAttach()
-            savedStateController.performRestore(null)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        }
-        fun stop() {
-            if (registry.currentState == Lifecycle.State.INITIALIZED) return
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        }
-    }
 }

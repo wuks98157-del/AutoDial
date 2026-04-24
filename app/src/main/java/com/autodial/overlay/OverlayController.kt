@@ -19,11 +19,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.*
 import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.savedstate.SavedStateRegistry
-import androidx.savedstate.SavedStateRegistryController
-import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.autodial.model.RunState
 import com.autodial.model.isActive
@@ -36,7 +32,7 @@ class OverlayController(private val context: Context) {
     private var overlayView: ComposeView? = null
 
     // Nullable var so a fresh instance is created on each show() call (Fix 2)
-    private var lifecycleOwner: SimpleLifecycleOwner? = null
+    private var lifecycleOwner: OverlaySimpleLifecycleOwner? = null
 
     private var overlayX = 0
     private var overlayY = 200
@@ -52,7 +48,7 @@ class OverlayController(private val context: Context) {
 
     private fun show() {
         // Fix 2 — create a fresh owner each time so LifecycleRegistry is never reused
-        val owner = SimpleLifecycleOwner().also { it.start() }
+        val owner = OverlaySimpleLifecycleOwner().also { it.start() }
         lifecycleOwner = owner
 
         val view = ComposeView(context)
@@ -119,29 +115,6 @@ class OverlayController(private val context: Context) {
 
     // Removed duplicate private RunState.isActive() extension — the public one from RunState.kt
     // is used directly in updateState() above.
-
-    private inner class SimpleLifecycleOwner : LifecycleOwner, SavedStateRegistryOwner {
-        private val registry = LifecycleRegistry(this)
-        private val savedStateController = SavedStateRegistryController.create(this)
-        override val lifecycle: Lifecycle get() = registry
-        override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
-
-        fun start() {
-            savedStateController.performAttach()
-            savedStateController.performRestore(null)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        }
-
-        fun stop() {
-            // Fix 3 — guard against stop() being called before start() (INITIALIZED state)
-            if (registry.currentState == Lifecycle.State.INITIALIZED) return
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        }
-    }
 }
 
 // Fix 4 — ticking helper composable so InCall countdown updates every second

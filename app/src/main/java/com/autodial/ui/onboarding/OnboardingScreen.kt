@@ -177,7 +177,7 @@ private fun StepDescription(text: String) {
 }
 
 @Composable
-private fun WelcomeStep(onNext: () -> Unit) {
+private fun ColumnScope.WelcomeStep(onNext: () -> Unit) {
     Spacer(Modifier.height(36.dp))
     AdLabel("Welcome")
     Spacer(Modifier.height(8.dp))
@@ -200,7 +200,7 @@ private fun WelcomeStep(onNext: () -> Unit) {
 }
 
 @Composable
-private fun PermissionStep(
+private fun ColumnScope.PermissionStep(
     title: String, description: String, actionLabel: String,
     isDone: Boolean, onAction: () -> Unit, onNext: () -> Unit
 ) {
@@ -217,7 +217,7 @@ private fun PermissionStep(
 }
 
 @Composable
-private fun OemSetupStep(oemHelper: com.autodial.oem.OemCompatibilityHelper, onConfirm: () -> Unit) {
+private fun ColumnScope.OemSetupStep(oemHelper: com.autodial.oem.OemCompatibilityHelper, onConfirm: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     StepHeadline("${oemHelper.oem.name} tweaks")
     StepDescription("Your phone needs extra settings tweaks so AutoDial can run reliably in the background. Open each item and follow the prompt, then confirm below.")
@@ -251,7 +251,7 @@ private fun OemSetupStep(oemHelper: com.autodial.oem.OemCompatibilityHelper, onC
 }
 
 @Composable
-private fun InstallAppsStep(
+private fun ColumnScope.InstallAppsStep(
     bizPhoneInstalled: Boolean, mobileVoipInstalled: Boolean,
     onRefresh: () -> Unit, onNext: () -> Unit
 ) {
@@ -297,7 +297,7 @@ private fun AppInstallRow(name: String, packageId: String, installed: Boolean) {
 }
 
 @Composable
-private fun RecordRecipeStep(
+private fun ColumnScope.RecordRecipeStep(
     appName: String,
     description: String,
     recorded: Boolean,

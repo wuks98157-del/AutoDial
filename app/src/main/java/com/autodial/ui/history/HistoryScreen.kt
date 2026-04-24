@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import android.widget.Toast
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +37,7 @@ fun HistoryScreen(
     val events by vm.selectedRunEvents.collectAsState()
     var selectedRun by remember { mutableStateOf<RunRecord?>(null) }
     var showClearDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     Surface(color = BackgroundDark, modifier = Modifier.fillMaxSize()) {
         Column(
@@ -60,8 +64,22 @@ fun HistoryScreen(
                     }
                 },
                 right = {
-                    AdIconButton(onClick = { showClearDialog = true }, color = Orange) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear history")
+                    Row {
+                        AdIconButton(onClick = {
+                            vm.exportHistory(context) { result ->
+                                val msg = if (result.startsWith("!")) {
+                                    "Export failed: ${result.drop(1)}"
+                                } else {
+                                    "Saved to ${result.substringAfterLast('/')}"
+                                }
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                        }) {
+                            Icon(Icons.Default.FileDownload, contentDescription = "Export CSV")
+                        }
+                        AdIconButton(onClick = { showClearDialog = true }, color = Orange) {
+                            Icon(Icons.Default.Delete, contentDescription = "Clear history")
+                        }
                     }
                 },
             )
