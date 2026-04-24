@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -39,24 +41,42 @@ fun WizardCard(
     onRetrySave: () -> Unit,
     onDrag: (dx: Float, dy: Float) -> Unit
 ) {
-    Box(
+    Column(
         Modifier
             .width(200.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(AdBg)
             .border(1.dp, AdBorder, RoundedCornerShape(10.dp))
-            .padding(10.dp)
-            .pointerInput(Unit) {
-                detectDragGestures { _, d -> onDrag(d.x, d.y) }
-            }
     ) {
-        when (state) {
-            is WizardState.Step -> StepBody(state, onUndo, onCancel)
-            is WizardState.AwaitingReturn -> AwaitingBody(onCancel)
-            is WizardState.DuplicateWarning -> DuplicateBody(state, onReRecord, onCancel)
-            is WizardState.Completed -> CompletedBody(state, onRetrySave, onCancel)
-            WizardState.Cancelled -> Text("Cancelled", color = AdText)
-            WizardState.Idle -> {}
+        // Dedicated drag handle — a thin strip above the card content.
+        // Drag events here move the whole overlay; taps elsewhere on the
+        // card still reach Buttons. Same pattern as OverlayController's
+        // run bubble (drag on text column, buttons in a gesture-clean zone).
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(14.dp)
+                .pointerInput(Unit) {
+                    detectDragGestures { _, d -> onDrag(d.x, d.y) }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                Modifier
+                    .size(width = 32.dp, height = 3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(AdBorder)
+            )
+        }
+        Box(Modifier.padding(horizontal = 10.dp).padding(bottom = 10.dp).padding(top = 10.dp)) {
+            when (state) {
+                is WizardState.Step -> StepBody(state, onUndo, onCancel)
+                is WizardState.AwaitingReturn -> AwaitingBody(onCancel)
+                is WizardState.DuplicateWarning -> DuplicateBody(state, onReRecord, onCancel)
+                is WizardState.Completed -> CompletedBody(state, onRetrySave, onCancel)
+                WizardState.Cancelled -> Text("Cancelled", color = AdText)
+                WizardState.Idle -> {}
+            }
         }
     }
 }
@@ -79,6 +99,7 @@ private fun StepBody(state: WizardState.Step, onUndo: () -> Unit, onCancel: () -
                 "✕", color = AdTextDim, fontSize = 14.sp,
                 modifier = Modifier
                     .size(24.dp)
+                    .semantics { contentDescription = "Cancel wizard" }
                     .pointerInput(Unit) { detectTapGestures(onTap = { onCancel() }) }
             )
         }
@@ -139,9 +160,11 @@ private fun AwaitingBody(onCancel: () -> Unit) {
         )
         Text(
             "✕ Cancel", color = AdTextDim, fontSize = 10.sp,
-            modifier = Modifier.pointerInput(Unit) {
-                detectTapGestures(onTap = { onCancel() })
-            }
+            modifier = Modifier
+                .semantics { contentDescription = "Cancel wizard" }
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { onCancel() })
+                }
         )
     }
 }
