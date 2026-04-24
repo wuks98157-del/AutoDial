@@ -129,7 +129,9 @@ class WizardStateMachine {
         _state.value = s.copy(
             macro = macro, queue = newQueue,
             captured = newCaptured, undoStack = newUndo,
-            lastCapture = newCaptured[newUndo.lastOrNull()]
+            lastCapture = newCaptured[newUndo.lastOrNull()]?.takeIf {
+                newUndo.isNotEmpty() && macroOf(newUndo.last()) == macro
+            }
         )
     }
 

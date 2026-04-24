@@ -61,7 +61,7 @@ class WizardStateMachineTest {
 
     @Test fun pressCallCapturedEmitsSaveRecipeAndTransitionsToCompletedSaving() = runTest {
         val effects = mutableListOf<WizardSideEffect>()
-        val job = kotlinx.coroutines.GlobalScope.launch {
+        backgroundScope.launch {
             sm.sideEffects.collect { effects.add(it) }
         }
         sm.onCommand(WizardCommand.Start(pkg))
@@ -69,7 +69,6 @@ class WizardStateMachineTest {
         (0..9).forEach { sm.onEvent(WizardEvent.Captured(step("DIGIT_$it"))) }
         sm.onEvent(WizardEvent.Captured(step("CLEAR_DIGITS", rid = "clear")))
         sm.onEvent(WizardEvent.Captured(step("PRESS_CALL", rid = "call")))
-        job.cancel()
         val s = sm.state.value as WizardState.Completed
         assertNull(s.recipeSaved)
         assertTrue(effects.any { it is WizardSideEffect.SaveRecipe })
@@ -101,14 +100,13 @@ class WizardStateMachineTest {
 
     @Test fun clearToPressCallTransitionEmitsAutoWipe() = runTest {
         val effects = mutableListOf<WizardSideEffect>()
-        val job = kotlinx.coroutines.GlobalScope.launch {
+        backgroundScope.launch {
             sm.sideEffects.collect { effects.add(it) }
         }
         sm.onCommand(WizardCommand.Start(pkg))
         sm.onEvent(WizardEvent.Captured(step("OPEN_DIAL_PAD")))
         (0..9).forEach { sm.onEvent(WizardEvent.Captured(step("DIGIT_$it"))) }
         sm.onEvent(WizardEvent.Captured(step("CLEAR_DIGITS", rid = "clear")))
-        job.cancel()
         assertTrue(effects.any { it is WizardSideEffect.AutoWipeDialPad })
     }
 
