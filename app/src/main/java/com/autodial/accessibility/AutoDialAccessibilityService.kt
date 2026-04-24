@@ -226,10 +226,19 @@ class AutoDialAccessibilityService : AccessibilityService() {
     // Taps the recorded CLEAR_DIGITS node ~15× to empty the dial pad after the
     // user's single capture-tap. Same logic as the old WizardViewModel.autoWipeDialPad
     // — moved here because the service now owns wizard side-effects.
+    //
+    // Critical: the state-collector already armed UiRecorder for [PRESS_CALL]
+    // the instant we entered the PRESS_CALL macro. If we didn't pause it here,
+    // our own programmatic backspace taps would fire accessibility click
+    // events in the target app and UiRecorder would consume the PRESS_CALL
+    // slot — advancing the wizard to Completed without ever asking the user
+    // to tap the real call button. Stop the recorder for the duration of
+    // the wipe, then re-arm with whatever the state machine has queued next.
     private suspend fun autoWipeDialPad(
         clear: com.autodial.model.RecordedStep,
         targetPackage: String
     ) {
+        recorder?.stopCapturing()
         val step = com.autodial.data.db.entity.RecipeStep(
             targetPackage = targetPackage, stepId = "CLEAR_DIGITS",
             resourceId = clear.resourceId, text = clear.text, className = clear.className,
@@ -247,6 +256,12 @@ class AutoDialAccessibilityService : AccessibilityService() {
         repeat(15) {
             executeStep(step)
             kotlinx.coroutines.delay(120L)
+        }
+        // Re-arm the recorder for the current macro's queue — typically
+        // [PRESS_CALL] after a CLEAR_DIGITS → PRESS_CALL transition.
+        val cur = wizardStateMachine?.state?.value as? WizardState.Step
+        if (cur != null) {
+            recorder?.startCapturing(cur.queue, cur.targetPackage)
         }
     }
 
