@@ -188,4 +188,40 @@ class WizardStateMachineTest {
         sm.onEvent(WizardEvent.ServiceRevoked)
         assertEquals(WizardState.Cancelled, sm.state.value)
     }
+
+    @Test fun retrySaveAfterFailureResetsToSavingAndReEmitsSaveRecipe() = runTest {
+        val effects = mutableListOf<WizardSideEffect>()
+        backgroundScope.launch { sm.sideEffects.collect { effects.add(it) } }
+        sm.onCommand(WizardCommand.Start(pkg))
+        sm.onEvent(WizardEvent.Captured(step("OPEN_DIAL_PAD")))
+        (0..9).forEach { sm.onEvent(WizardEvent.Captured(step("DIGIT_$it"))) }
+        sm.onEvent(WizardEvent.Captured(step("CLEAR_DIGITS", rid = "clear")))
+        sm.onEvent(WizardEvent.Captured(step("PRESS_CALL", rid = "call")))
+        sm.onEvent(WizardEvent.RecipeSaveResult(success = false, error = "disk full"))
+        assertEquals(false, (sm.state.value as WizardState.Completed).recipeSaved)
+
+        val effectsBeforeRetry = effects.size
+        sm.onCommand(WizardCommand.RetrySave)
+        val s = sm.state.value as WizardState.Completed
+        assertNull("retry should reset recipeSaved to null (saving)", s.recipeSaved)
+        assertTrue(
+            "retry should emit another SaveRecipe",
+            effects.size > effectsBeforeRetry &&
+                effects.last() is WizardSideEffect.SaveRecipe
+        )
+
+        sm.onEvent(WizardEvent.RecipeSaveResult(success = true))
+        assertEquals(true, (sm.state.value as WizardState.Completed).recipeSaved)
+    }
+
+    @Test fun retrySaveIgnoredWhileSaveInProgress() = runTest {
+        sm.onCommand(WizardCommand.Start(pkg))
+        sm.onEvent(WizardEvent.Captured(step("OPEN_DIAL_PAD")))
+        (0..9).forEach { sm.onEvent(WizardEvent.Captured(step("DIGIT_$it"))) }
+        sm.onEvent(WizardEvent.Captured(step("CLEAR_DIGITS", rid = "clear")))
+        sm.onEvent(WizardEvent.Captured(step("PRESS_CALL", rid = "call")))
+        // state is Completed(recipeSaved=null) — saving in progress
+        sm.onCommand(WizardCommand.RetrySave)
+        assertNull((sm.state.value as WizardState.Completed).recipeSaved)
+    }
 }

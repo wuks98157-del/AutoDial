@@ -38,6 +38,10 @@ class UiRecorder(
         targetPackage = pkg
         this.digitAutoMode = digitAutoMode
         debounceUntil = System.currentTimeMillis() + 500L
+        // Drain any leftover captures from a prior session so the new consumer
+        // starts clean. Only the wizard consumes capturedSteps; runs don't
+        // touch it, so this is safe to unconditionally clear on every start.
+        while (_captured.tryReceive().isSuccess) { /* drop */ }
         Log.i(TAG, "startCapturing pkg=$pkg steps=$stepIds digitAutoMode=$digitAutoMode")
     }
 

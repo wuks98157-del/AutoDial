@@ -50,7 +50,6 @@ class AutoDialAccessibilityService : AccessibilityService() {
     private var wizardOverlay: WizardOverlayController? = null
     private var recipeWriter: WizardRecipeWriter? = null
     @Volatile private var wizardActivePackage: String? = null
-    @Volatile private var lastCapturedForSave: Map<String, com.autodial.model.RecordedStep>? = null
     private var wizardJob: Job? = null
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -102,26 +101,6 @@ class AutoDialAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ── Record Mode API ─────────────────────────────────────────────────────
-
-    fun startRecording(stepId: String, targetPackage: String) {
-        recorder?.startCapturing(stepId, targetPackage)
-    }
-
-    fun startRecordingSequence(
-        stepIds: List<String>,
-        targetPackage: String,
-        digitAutoMode: Boolean = false
-    ) {
-        recorder?.startCapturing(stepIds, targetPackage, digitAutoMode)
-    }
-
-    fun stopRecording() {
-        recorder?.stopCapturing()
-    }
-
-    fun recordedSteps() = recorder?.capturedSteps
-
     // ── Play Mode API ───────────────────────────────────────────────────────
 
     fun beginRun(params: RunParams) {
@@ -172,10 +151,7 @@ class AutoDialAccessibilityService : AccessibilityService() {
             onUndo = { sm.onCommand(WizardCommand.Undo) },
             onCancel = { sm.onCommand(WizardCommand.Cancel) },
             onReRecord = { sm.onCommand(WizardCommand.ReRecord) },
-            onRetrySave = {
-                val snap = lastCapturedForSave ?: return@show
-                scope.launch { runSave(writer, targetPackage, snap, sm) }
-            }
+            onRetrySave = { sm.onCommand(WizardCommand.RetrySave) }
         )
         sm.onCommand(WizardCommand.Start(targetPackage))
 
@@ -214,10 +190,8 @@ class AutoDialAccessibilityService : AccessibilityService() {
                     when (effect) {
                         is WizardSideEffect.AutoWipeDialPad ->
                             autoWipeDialPad(effect.clearStep, effect.targetPackage)
-                        is WizardSideEffect.SaveRecipe -> {
-                            lastCapturedForSave = effect.captured
+                        is WizardSideEffect.SaveRecipe ->
                             runSave(writer, effect.targetPackage, effect.captured, sm)
-                        }
                     }
                 }
             }
@@ -232,7 +206,6 @@ class AutoDialAccessibilityService : AccessibilityService() {
         wizardStateMachine = null
         recipeWriter = null
         wizardActivePackage = null
-        lastCapturedForSave = null
         recorder?.stopCapturing()
     }
 
@@ -253,7 +226,7 @@ class AutoDialAccessibilityService : AccessibilityService() {
     // Taps the recorded CLEAR_DIGITS node ~15× to empty the dial pad after the
     // user's single capture-tap. Same logic as the old WizardViewModel.autoWipeDialPad
     // — moved here because the service now owns wizard side-effects.
-    private fun autoWipeDialPad(
+    private suspend fun autoWipeDialPad(
         clear: com.autodial.model.RecordedStep,
         targetPackage: String
     ) {
@@ -267,15 +240,13 @@ class AutoDialAccessibilityService : AccessibilityService() {
             recordedOnScreenW = clear.recordedOnScreenW,
             recordedOnScreenH = clear.recordedOnScreenH
         )
-        scope.launch {
-            val intent = packageManager.getLaunchIntentForPackage(targetPackage)
-                ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (intent != null) applicationContext.startActivity(intent)
-            kotlinx.coroutines.delay(500L)
-            repeat(15) {
-                executeStep(step)
-                kotlinx.coroutines.delay(120L)
-            }
+        val intent = packageManager.getLaunchIntentForPackage(targetPackage)
+            ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (intent != null) applicationContext.startActivity(intent)
+        kotlinx.coroutines.delay(500L)
+        repeat(15) {
+            executeStep(step)
+            kotlinx.coroutines.delay(120L)
         }
     }
 

@@ -17,6 +17,7 @@ class WizardStateMachine {
             WizardCommand.Cancel -> handleCancel()
             WizardCommand.Undo -> handleUndo()
             WizardCommand.ReRecord -> handleReRecord()
+            WizardCommand.RetrySave -> handleRetrySave()
         }
     }
 
@@ -101,7 +102,11 @@ class WizardStateMachine {
                 return
             }
             _sideEffects.tryEmit(WizardSideEffect.SaveRecipe(s.targetPackage, newCaptured))
-            _state.value = WizardState.Completed(recipeSaved = null)
+            _state.value = WizardState.Completed(
+                recipeSaved = null,
+                targetPackage = s.targetPackage,
+                captured = newCaptured
+            )
             return
         }
         val advanced = s.copy(
@@ -121,23 +126,46 @@ class WizardStateMachine {
         val lastId = s.undoStack.last()
         val newUndo = s.undoStack.dropLast(1)
         val newCaptured = s.captured - lastId
-        val macro = if (newUndo.isEmpty()) MacroStep.OPEN_DIAL_PAD
-                    else macroOf(newUndo.last())
+        // Undo rewinds to the macro that contained the capture we just popped
+        // — that's the macro whose prompt should re-appear for re-recording.
+        // Deriving from newUndo.last() was wrong: after a cross-macro undo it
+        // left us in the prior macro with an empty queue (everything in that
+        // macro still captured), so the user was stuck.
+        val macro = macroOf(lastId)
         val fullQueue = queueFor(macro)
         val capturedInMacro = newCaptured.keys.filter { macroOf(it) == macro }
         val newQueue = fullQueue - capturedInMacro.toSet()
+        // lastCapture drives the "✓ just captured X" card hint. Keep it only
+        // when the remaining prior capture is in the macro we're now in —
+        // otherwise it shows a stale checkmark from a macro we just rewound past.
+        val priorId = newUndo.lastOrNull()
+        val lastCapture = if (priorId != null && macroOf(priorId) == macro)
+            newCaptured[priorId] else null
         _state.value = s.copy(
             macro = macro, queue = newQueue,
             captured = newCaptured, undoStack = newUndo,
-            lastCapture = newCaptured[newUndo.lastOrNull()]?.takeIf {
-                newUndo.isNotEmpty() && macroOf(newUndo.last()) == macro
-            }
+            lastCapture = lastCapture
         )
     }
 
     private fun handleReRecord() {
         val s = _state.value as? WizardState.DuplicateWarning ?: return
         _state.value = s.resume
+    }
+
+    private fun handleRetrySave() {
+        val s = _state.value as? WizardState.Completed ?: return
+        // Only retry after a failure — ignore in success/saving states to
+        // prevent double-fires.
+        if (s.recipeSaved != false) return
+        val captured = s.captured ?: return
+        val pkg = s.targetPackage ?: return
+        _sideEffects.tryEmit(WizardSideEffect.SaveRecipe(pkg, captured))
+        _state.value = WizardState.Completed(
+            recipeSaved = null,
+            targetPackage = pkg,
+            captured = captured
+        )
     }
 
     private fun handleBackgrounded() {

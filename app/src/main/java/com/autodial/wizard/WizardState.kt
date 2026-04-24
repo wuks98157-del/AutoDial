@@ -22,7 +22,14 @@ sealed class WizardState {
         val resume: Step
     ) : WizardState()
 
-    data class Completed(val recipeSaved: Boolean?, val error: String? = null) : WizardState()
+    data class Completed(
+        val recipeSaved: Boolean?,
+        val error: String? = null,
+        // Retained on entry to Completed so RetrySave can re-fire SaveRecipe
+        // without needing a side-channel snapshot on the service.
+        val targetPackage: String? = null,
+        val captured: Map<String, RecordedStep>? = null
+    ) : WizardState()
 
     object Cancelled : WizardState()
 }
@@ -34,6 +41,7 @@ sealed class WizardCommand {
     object Cancel : WizardCommand()
     object Undo : WizardCommand()
     object ReRecord : WizardCommand()
+    object RetrySave : WizardCommand()
 }
 
 sealed class WizardEvent {
