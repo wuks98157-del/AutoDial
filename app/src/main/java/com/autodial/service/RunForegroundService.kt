@@ -204,11 +204,18 @@ class RunForegroundService : Service() {
                     }
                 }
                 stateMachine.markHangingUp()
-                val autoId = TargetApps.autoHangupResourceId(state.params.targetPackage)
-                if (autoId != null) {
-                    autoHangup(autoId, accessService)
-                } else {
-                    executeStep("HANG_UP", state.params, accessService)
+                when (val strategy = TargetApps.hangupStrategy(state.params.targetPackage)) {
+                    is TargetApps.HangupStrategy.AutoHangupById ->
+                        autoHangup(strategy.resourceId, accessService)
+                    TargetApps.HangupStrategy.ReuseCallButton ->
+                        // Mobile VOIP: the end-call view is different from the dial-pad call
+                        // button but sits at the same location and size, so replaying the
+                        // recorded PRESS_CALL step (Tier-3 coord fallback if needed) reaches
+                        // the hangup view during an active call. History still records this
+                        // as HANG_UP for diagnostics.
+                        executeStep("PRESS_CALL", state.params, accessService, logicalStepId = "HANG_UP")
+                    TargetApps.HangupStrategy.RecordedStep ->
+                        executeStep("HANG_UP", state.params, accessService)
                 }
                 // inter-cycle settle
                 delay(600L)
@@ -226,16 +233,17 @@ class RunForegroundService : Service() {
     private suspend fun executeStep(
         stepId: String,
         params: RunParams,
-        accessService: AutoDialAccessibilityService
+        accessService: AutoDialAccessibilityService,
+        logicalStepId: String = stepId
     ) {
         val steps = recipeRepo.getSteps(params.targetPackage)
         val step = steps.firstOrNull { it.stepId == stepId }
         if (step == null) {
             Log.w(TAG, "step $stepId NOT in recipe for ${params.targetPackage}")
-            stateMachine.onEvent(RunEvent.StepActionFailed(stepId, "failed:step-not-recorded"))
+            stateMachine.onEvent(RunEvent.StepActionFailed(logicalStepId, "failed:step-not-recorded"))
             return
         }
-        Log.i(TAG, "EXEC $stepId rid=${step.resourceId} text=${step.text} cls=${step.className} " +
+        Log.i(TAG, "EXEC $logicalStepId (data=$stepId) rid=${step.resourceId} text=${step.text} cls=${step.className} " +
             "bounds=rel(${"%.3f".format(step.boundsRelX)},${"%.3f".format(step.boundsRelY)}," +
             "${"%.3f".format(step.boundsRelW)}x${"%.3f".format(step.boundsRelH)})")
         val outcome = accessService.executeStep(step)
@@ -243,14 +251,14 @@ class RunForegroundService : Service() {
             is StepOutcome.Ok -> outcome.outcome
             is StepOutcome.Failed -> outcome.reason
         }
-        Log.i(TAG, "EXEC $stepId result=$outStr")
+        Log.i(TAG, "EXEC $logicalStepId result=$outStr")
         historyRepo.logStepEvent(RunStepEvent(
-            runId = runId, cycleIndex = currentCycle(), stepId = stepId,
+            runId = runId, cycleIndex = currentCycle(), stepId = logicalStepId,
             at = System.currentTimeMillis(), outcome = outStr, detail = null
         ))
         when (outcome) {
-            is StepOutcome.Ok -> stateMachine.onEvent(RunEvent.StepActionSucceeded(stepId, outStr))
-            is StepOutcome.Failed -> stateMachine.onEvent(RunEvent.StepActionFailed(stepId, outStr))
+            is StepOutcome.Ok -> stateMachine.onEvent(RunEvent.StepActionSucceeded(logicalStepId, outStr))
+            is StepOutcome.Failed -> stateMachine.onEvent(RunEvent.StepActionFailed(logicalStepId, outStr))
         }
     }
 

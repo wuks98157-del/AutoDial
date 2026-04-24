@@ -61,8 +61,11 @@ val DIGIT_STEP_IDS = (0..9).map { "DIGIT_$it" }
 // by resourceId + visibility at hangup time — no recording needed.
 fun wizardStepsFor(targetPackage: String): List<String> {
     val base = listOf("OPEN_DIAL_PAD", RECORD_DIGITS, "CLEAR_DIGITS", "PRESS_CALL")
-    return if (TargetApps.autoHangupResourceId(targetPackage) != null) base
-    else base + "HANG_UP"
+    return when (TargetApps.hangupStrategy(targetPackage)) {
+        is TargetApps.HangupStrategy.AutoHangupById -> base
+        TargetApps.HangupStrategy.ReuseCallButton -> base
+        TargetApps.HangupStrategy.RecordedStep -> base + "HANG_UP"
+    }
 }
 
 fun stepInstruction(stepId: String, appName: String): String = when (stepId) {
