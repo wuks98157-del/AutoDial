@@ -43,26 +43,33 @@ class MainActivity : ComponentActivity() {
 
         Log.i(TAG, "MainActivity.onCreate saved=${savedInstanceState != null}")
 
-        // Resolve the start destination off the main thread. Previously this
-        // used runBlocking, which on OPPO ColorOS routinely killed MainActivity
-        // while a run was in progress in the target app — when finishRun fired
-        // startActivity, the cold re-creation's runBlocking competed with
-        // Hilt/Room/DataStore warm-up for the main thread and the window
-        // rendered black until force-closed. Windows' background is
-        // @android:color/black (themes.xml), so ANY composition gap shows as
-        // black. Two safeguards: a 2s timeout that defaults to Dialer so we
-        // never get stuck on a slow DataStore read, and an explicit dark
-        // Surface behind the NavHost so there's a real Compose background.
-        splash.setKeepOnScreenCondition { startDest == null }
+        // The window background is pure black per themes.xml (splash theme).
+        // If anything on the path to first composition hangs or throws, the
+        // user sees a black screen until the process is force-killed. Every
+        // branch below MUST either set startDest or time-bail — and the
+        // Compose tree MUST render even when startDest hasn't resolved.
+        // Hard cap on splash — 1s is enough for the happy path and lets us
+        // paint Compose's dark Surface even if the settings load is still
+        // pending on a cold start.
+        val splashStart = System.currentTimeMillis()
+        splash.setKeepOnScreenCondition {
+            startDest == null && (System.currentTimeMillis() - splashStart) < 1000L
+        }
         lifecycleScope.launch {
             Log.i(TAG, "MainActivity loading settings…")
             val t0 = System.currentTimeMillis()
-            val s = withTimeoutOrNull(2_000L) { settingsRepository.settings.first() }
-            val onboardedFlag = s?.onboardingCompletedAt ?: -1L
-            val dest = if (onboardedFlag != 0L) Screen.Dialer.route
-                       else Screen.Onboarding.route
-            Log.i(TAG, "MainActivity settings loaded in ${System.currentTimeMillis() - t0}ms " +
-                "onboardedAt=$onboardedFlag dest=$dest (timeout=${s == null})")
+            val dest = try {
+                val s = withTimeoutOrNull(2_000L) { settingsRepository.settings.first() }
+                val onboardedFlag = s?.onboardingCompletedAt ?: -1L
+                val resolved = if (onboardedFlag != 0L) Screen.Dialer.route
+                               else Screen.Onboarding.route
+                Log.i(TAG, "MainActivity settings loaded in ${System.currentTimeMillis() - t0}ms " +
+                    "onboardedAt=$onboardedFlag dest=$resolved (timeout=${s == null})")
+                resolved
+            } catch (t: Throwable) {
+                Log.e(TAG, "settings load failed; defaulting to Dialer", t)
+                Screen.Dialer.route
+            }
             startDest = dest
         }
 
@@ -72,12 +79,16 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val dest = startDest
-                    if (dest != null) {
-                        Log.i(TAG, "MainActivity composing NavGraph dest=$dest")
-                        val navController = rememberNavController()
-                        NavGraph(navController = navController, startDestination = dest)
-                    }
+                    // Render NavGraph UNCONDITIONALLY. If startDest hasn't
+                    // resolved by first composition we start at Dialer; once
+                    // the settings flow emits, it'll either match (no-op) or
+                    // (first-time user) the Dialer's own VM will flip them
+                    // to onboarding. Never leave Compose empty — empty
+                    // composition shows the black window background forever.
+                    val dest = startDest ?: Screen.Dialer.route
+                    Log.i(TAG, "MainActivity composing NavGraph dest=$dest")
+                    val navController = rememberNavController()
+                    NavGraph(navController = navController, startDestination = dest)
                 }
             }
         }
