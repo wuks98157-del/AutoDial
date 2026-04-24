@@ -39,7 +39,12 @@ fun DialerScreen(
     LaunchedEffect(state.isRunActive) { if (state.isRunActive) onNavigateToActiveRun() }
 
     Surface(modifier = Modifier.fillMaxSize(), color = BackgroundDark) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
             AdHeader(
                 title = {
                     Row {

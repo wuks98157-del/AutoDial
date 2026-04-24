@@ -36,7 +36,12 @@ fun HistoryScreen(
     var showClearDialog by remember { mutableStateOf(false) }
 
     Surface(color = BackgroundDark, modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
 
             // ── Header ──────────────────────────────────────────────────────
             AdHeader(

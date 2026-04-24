@@ -41,7 +41,12 @@ fun SettingsScreen(
     val settings = state.settings ?: return
 
     Surface(modifier = Modifier.fillMaxSize(), color = BackgroundDark) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
             AdHeader(
                 title = {
                     Text(

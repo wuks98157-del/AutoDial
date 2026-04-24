@@ -46,7 +46,12 @@ fun ActiveRunScreen(
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = BackgroundDark) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
             LiveBar()
             Column(
                 Modifier

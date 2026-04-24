@@ -26,16 +26,28 @@ fun HistoryDetailSheet(
             items(events) { event ->
                 val time = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date(event.at))
                 val isOk = event.outcome.startsWith("ok:")
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.Top,
+                ) {
+                    Column(Modifier.weight(1f)) {
                         Text("[${event.cycleIndex}] ${event.stepId}",
                             style = MaterialTheme.typography.bodyMedium)
                         Text(event.outcome, color = if (isOk) GreenOk else Red,
                             style = MaterialTheme.typography.labelMedium)
                     }
-                    Text(time, style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Fixed single-line timestamp — without this, long outcome
+                    // strings push the timestamp into a narrow column and Compose
+                    // wraps it character-by-character vertically.
+                    Text(
+                        time,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+                    )
                 }
                 HorizontalDivider()
             }
