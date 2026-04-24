@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.autodial.R
 import com.autodial.accessibility.AutoDialAccessibilityService
@@ -39,6 +40,10 @@ class RunForegroundService : Service() {
 
         private val _publicState = MutableStateFlow<RunState>(RunState.Idle)
         val publicState: StateFlow<RunState> = _publicState.asStateFlow()
+
+        // Logcat tag. Filter in Android Studio's Logcat pane with "tag:AutoDial"
+        // or from a terminal: `adb logcat -s AutoDial:*`.
+        const val TAG = "AutoDial"
 
         fun start(context: Context, params: RunParams) {
             val intent = Intent(context, RunForegroundService::class.java).apply {
@@ -101,6 +106,7 @@ class RunForegroundService : Service() {
             )
             runId = historyRepo.startRun(record)
             currentRunRecord = record.copy(id = runId)
+            Log.i(TAG, "=== RUN START id=$runId number=${params.number} target=${params.targetPackage} cycles=${params.plannedCycles} hangupS=${params.hangupSeconds} ===")
 
             val accessService = AutoDialAccessibilityService.instance
             if (accessService == null) {
@@ -116,6 +122,7 @@ class RunForegroundService : Service() {
             // Collect accessibility events → state machine
             launch {
                 accessService.runEvents.collect { event ->
+                    Log.d(TAG, "event: $event")
                     stateMachine.onEvent(event)
                     _publicState.value = stateMachine.state.value
                 }
@@ -123,6 +130,7 @@ class RunForegroundService : Service() {
 
             // Drive the state machine
             stateMachine.state.collect { state ->
+                Log.i(TAG, "state → ${state::class.simpleName}")
                 _publicState.value = state
                 overlayController?.updateState(state)
                 updateNotification(state)
@@ -152,39 +160,61 @@ class RunForegroundService : Service() {
                 }
             }
 
-            is RunState.OpeningDialPad -> executeStep("OPEN_DIAL_PAD", state.params, accessService)
-
-            is RunState.TypingDigits -> {
-                val digit = state.params.number[state.digitIndex].toString()
-                executeStep("DIGIT_$digit", state.params, accessService)
-                if (state.digitIndex < state.params.number.length - 1) {
-                    delay(state.params.interDigitDelayMs)
-                }
+            is RunState.OpeningDialPad -> {
+                // The state machine arrives here the instant ANY BizPhone window
+                // appears — which includes the splash / login activity before the
+                // real UI has mounted. Tapping OPEN_DIAL_PAD at that moment lands
+                // on nothing useful and the run marches on tapping random pixels.
+                // Wait for the first launch screen to settle into a real activity
+                // before firing the tap, then give the post-tap animation time.
+                Log.d(TAG, "OpeningDialPad: initial 1800ms settle")
+                delay(1800L)
+                waitForRecordedNode(state.params.targetPackage, "OPEN_DIAL_PAD", 2500L, accessService)
+                executeStep("OPEN_DIAL_PAD", state.params, accessService)
+                delay(900L)
             }
 
-            is RunState.PressingCall -> executeStep("PRESS_CALL", state.params, accessService)
+            is RunState.EnteringNumber -> {
+                setNumber(state.params, accessService)
+                delay(300L)
+            }
+
+            is RunState.PressingCall -> {
+                // Cycle N+1 on BizPhone returns here straight from HANG_UP, while
+                // InCallActivity is still dismissing — tapping `:id/call` at that
+                // moment finds zero candidates and falls through to a blind Tier 3
+                // coord tap on the wrong surface, silently advancing the state
+                // machine into a phantom InCall that trips auto-hangup-not-visible
+                // 10s later. Wait for the dial pad node to actually be reachable
+                // before firing. No-op (~10ms) when we're already on the dial pad.
+                waitForRecordedNode(state.params.targetPackage, "PRESS_CALL", 2500L, accessService)
+                executeStep("PRESS_CALL", state.params, accessService)
+            }
 
             is RunState.InCall -> {
                 val remaining = state.hangupAt - System.currentTimeMillis()
-                if (remaining > 0) delay(remaining)
-                val steps = recipeRepo.getSteps(state.params.targetPackage)
-                // After hangupSeconds the call should be connected; prefer HANG_UP_CONNECTED.
-                // Fall back to HANG_UP_RINGING only if no connected-hangup step was recorded.
-                val hangupStep = if (steps.any { it.stepId == "HANG_UP_CONNECTED" }) {
-                    "HANG_UP_CONNECTED"
-                } else {
-                    "HANG_UP_RINGING"
+                // Interruptible wait: returns early if handleStop() flips the
+                // state to HangingUp (user pressed STOP), or if the user pressed
+                // STOP during PressingCall and we landed here with stopRequested
+                // already set. Plain `delay(remaining)` ignored state changes,
+                // so STOP during a call used to do nothing for the full timer.
+                if (remaining > 0 && !stateMachine.isStopRequested()) {
+                    withTimeoutOrNull(remaining) {
+                        stateMachine.state.first { it !is RunState.InCall }
+                    }
                 }
-                stateMachine.onEvent(RunEvent.StepActionSucceeded("PRESS_CALL", "ok:timer-elapsed"))
-                executeStep(hangupStep, state.params, accessService)
+                stateMachine.markHangingUp()
+                val autoId = TargetApps.autoHangupResourceId(state.params.targetPackage)
+                if (autoId != null) {
+                    autoHangup(autoId, accessService)
+                } else {
+                    executeStep("HANG_UP", state.params, accessService)
+                }
+                // inter-cycle settle
+                delay(600L)
             }
 
             is RunState.HangingUp -> { /* driven by IN_CALL above */ }
-
-            is RunState.ReturningToDialPad -> {
-                delay(800L) // inter-cycle settle
-                executeStep("RETURN_TO_DIAL_PAD", state.params, accessService)
-            }
 
             is RunState.Completed -> finishRun(RunStatus.DONE, null)
             is RunState.StoppedByUser -> finishRun(RunStatus.STOPPED, null)
@@ -201,14 +231,19 @@ class RunForegroundService : Service() {
         val steps = recipeRepo.getSteps(params.targetPackage)
         val step = steps.firstOrNull { it.stepId == stepId }
         if (step == null) {
+            Log.w(TAG, "step $stepId NOT in recipe for ${params.targetPackage}")
             stateMachine.onEvent(RunEvent.StepActionFailed(stepId, "failed:step-not-recorded"))
             return
         }
+        Log.i(TAG, "EXEC $stepId rid=${step.resourceId} text=${step.text} cls=${step.className} " +
+            "bounds=rel(${"%.3f".format(step.boundsRelX)},${"%.3f".format(step.boundsRelY)}," +
+            "${"%.3f".format(step.boundsRelW)}x${"%.3f".format(step.boundsRelH)})")
         val outcome = accessService.executeStep(step)
         val outStr = when (outcome) {
             is StepOutcome.Ok -> outcome.outcome
             is StepOutcome.Failed -> outcome.reason
         }
+        Log.i(TAG, "EXEC $stepId result=$outStr")
         historyRepo.logStepEvent(RunStepEvent(
             runId = runId, cycleIndex = currentCycle(), stepId = stepId,
             at = System.currentTimeMillis(), outcome = outStr, detail = null
@@ -219,15 +254,153 @@ class RunForegroundService : Service() {
         }
     }
 
+    private suspend fun setNumber(
+        params: RunParams,
+        accessService: AutoDialAccessibilityService
+    ) {
+        val steps = recipeRepo.getSteps(params.targetPackage)
+
+        // Phase 1: clear any leftover digits. Apps whose backspace clears all
+        // digits when held (BizPhone) get a single press-and-hold — faster than
+        // looping taps and it doesn't look like a scroll/flick to the target.
+        // Others fall back to a bounded tap loop (~15 is enough for any real
+        // phone number) with enough delay between taps to register as discrete
+        // clicks instead of a swipe.
+        val clearStep = steps.firstOrNull { it.stepId == "CLEAR_DIGITS" }
+        val longPressMs = TargetApps.clearDigitsLongPressMs(params.targetPackage)
+        if (clearStep != null && longPressMs != null) {
+            Log.i(TAG, "CLEAR_DIGITS long-press ${longPressMs}ms rid=${clearStep.resourceId} " +
+                "rel=(${"%.3f".format(clearStep.boundsRelX)},${"%.3f".format(clearStep.boundsRelY)})")
+            val outcome = accessService.longPressStep(clearStep, longPressMs)
+            val out = when (outcome) {
+                is StepOutcome.Ok -> outcome.outcome
+                is StepOutcome.Failed -> outcome.reason
+            }
+            Log.i(TAG, "CLEAR_DIGITS long-press → $out")
+        } else if (clearStep != null) {
+            Log.i(TAG, "CLEAR_DIGITS × 15 @ 120ms rid=${clearStep.resourceId} " +
+                "rel=(${"%.3f".format(clearStep.boundsRelX)},${"%.3f".format(clearStep.boundsRelY)})")
+            repeat(15) { i ->
+                val outcome = accessService.executeStep(clearStep)
+                val out = when (outcome) {
+                    is StepOutcome.Ok -> outcome.outcome
+                    is StepOutcome.Failed -> outcome.reason
+                }
+                Log.d(TAG, "CLEAR_DIGITS[$i] → $out")
+                delay(120L)
+            }
+        } else {
+            Log.w(TAG, "CLEAR_DIGITS step missing from recipe — skipping clear phase")
+        }
+
+        // Phase 2: tap each digit button in the target number. Each DIGIT_0..DIGIT_9
+        // was individually recorded so UiPlayer's tier fallback (resourceId →
+        // text+class+bounds → raw coordinate tap) has full identity info per button.
+        for (digit in params.number) {
+            val stepId = "DIGIT_$digit"
+            val digitStep = steps.firstOrNull { it.stepId == stepId }
+            if (digitStep == null) {
+                historyRepo.logStepEvent(RunStepEvent(
+                    runId = runId, cycleIndex = currentCycle(), stepId = stepId,
+                    at = System.currentTimeMillis(), outcome = "failed:step-not-recorded", detail = null
+                ))
+                stateMachine.onEvent(RunEvent.StepActionFailed("NUMBER_FIELD", "failed:digit-$digit-not-recorded"))
+                return
+            }
+            Log.i(TAG, "EXEC $stepId rid=${digitStep.resourceId} text=${digitStep.text} " +
+                "rel=(${"%.3f".format(digitStep.boundsRelX)},${"%.3f".format(digitStep.boundsRelY)})")
+            val outcome = accessService.executeStep(digitStep)
+            val outStr = when (outcome) {
+                is StepOutcome.Ok -> outcome.outcome
+                is StepOutcome.Failed -> outcome.reason
+            }
+            Log.i(TAG, "EXEC $stepId result=$outStr")
+            historyRepo.logStepEvent(RunStepEvent(
+                runId = runId, cycleIndex = currentCycle(), stepId = stepId,
+                at = System.currentTimeMillis(), outcome = outStr, detail = null
+            ))
+            if (outcome is StepOutcome.Failed) {
+                stateMachine.onEvent(RunEvent.StepActionFailed("NUMBER_FIELD", outStr))
+                return
+            }
+            delay(params.interDigitDelayMs)
+        }
+
+        stateMachine.onEvent(RunEvent.StepActionSucceeded("NUMBER_FIELD", "ok:digits-tapped"))
+    }
+
     private fun currentCycle(): Int {
         return when (val s = stateMachine.state.value) {
-            is RunState.TypingDigits -> s.cycle
+            is RunState.EnteringNumber -> s.cycle
             is RunState.PressingCall -> s.cycle
             is RunState.InCall -> s.cycle
             is RunState.HangingUp -> s.cycle
-            is RunState.ReturningToDialPad -> s.cycle
             else -> 0
         }
+    }
+
+    // Poll the accessibility tree until the node we recorded for [stepId] is
+    // reachable — i.e. BizPhone has settled past splash/login onto the screen the
+    // user was actually looking at when they taught the step. Returns early on
+    // match, otherwise falls through after [timeoutMs] so we still attempt the tap
+    // (better to try and fail loudly than hang forever). No-op if the recorded
+    // step has no resourceId to poll for.
+    // Hang up without needing a recorded HANG_UP step. Retries briefly in case
+    // the in-call window is still animating in when the hangup timer fires.
+    // Emits the usual StepActionSucceeded/Failed so the state machine can
+    // advance to the next cycle (or Completed) just like a normal step.
+    private suspend fun autoHangup(
+        resourceId: String,
+        accessService: AutoDialAccessibilityService
+    ) {
+        Log.i(TAG, "AUTO-HANGUP rid=$resourceId")
+        var outcome: StepOutcome = StepOutcome.Failed("failed:auto-hangup-not-attempted")
+        val deadline = System.currentTimeMillis() + 3000L
+        while (System.currentTimeMillis() < deadline) {
+            outcome = accessService.tapByResourceId(resourceId)
+            if (outcome is StepOutcome.Ok) break
+            delay(250L)
+        }
+        val outStr = when (outcome) {
+            is StepOutcome.Ok -> outcome.outcome
+            is StepOutcome.Failed -> outcome.reason
+        }
+        Log.i(TAG, "AUTO-HANGUP result=$outStr")
+        historyRepo.logStepEvent(RunStepEvent(
+            runId = runId, cycleIndex = currentCycle(), stepId = "HANG_UP",
+            at = System.currentTimeMillis(), outcome = outStr, detail = null
+        ))
+        when (outcome) {
+            is StepOutcome.Ok -> stateMachine.onEvent(RunEvent.StepActionSucceeded("HANG_UP", outStr))
+            is StepOutcome.Failed -> stateMachine.onEvent(RunEvent.StepActionFailed("HANG_UP", outStr))
+        }
+    }
+
+    private suspend fun waitForRecordedNode(
+        targetPackage: String,
+        stepId: String,
+        timeoutMs: Long,
+        accessService: AutoDialAccessibilityService
+    ) {
+        val step = recipeRepo.getSteps(targetPackage).firstOrNull { it.stepId == stepId }
+        val rid = step?.resourceId
+        if (rid == null) {
+            Log.d(TAG, "waitForRecordedNode($stepId): no resourceId, skipping poll")
+            return
+        }
+        Log.d(TAG, "waitForRecordedNode($stepId) rid=$rid timeout=${timeoutMs}ms")
+        val t0 = System.currentTimeMillis()
+        val deadline = t0 + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val root = accessService.rootNode()
+            val hits = root?.findAccessibilityNodeInfosByViewId(rid) ?: emptyList()
+            if (hits.any { it.isVisibleToUser }) {
+                Log.d(TAG, "waitForRecordedNode($stepId) FOUND after ${System.currentTimeMillis() - t0}ms (${hits.size} candidate(s))")
+                return
+            }
+            delay(200L)
+        }
+        Log.w(TAG, "waitForRecordedNode($stepId) TIMEOUT — proceeding anyway")
     }
 
     private fun stopRun() {
@@ -247,14 +420,17 @@ class RunForegroundService : Service() {
             AutoDialAccessibilityService.instance?.endRun()
             overlayController?.dismiss()
             releaseWakeLock()
+            _publicState.value = RunState.Idle
+            // Intentionally do NOT startActivity(MainActivity) here. OPPO
+            // ColorOS aggressively destroys MainActivity while the target app
+            // is foreground, and the cold-relaunch from a stopping service
+            // lands on a persistently black window. The run ended cleanly —
+            // leave the user on whatever they're looking at (usually the
+            // target app's dial pad). They return to AutoDial via the app
+            // switcher or launcher icon, which goes through normal warm-start
+            // paths and renders correctly every time.
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
-            _publicState.value = RunState.Idle
-            // Bring AutoDial back to foreground
-            val intent = Intent(this@RunForegroundService, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            }
-            startActivity(intent)
         }
     }
 
@@ -308,7 +484,8 @@ class RunForegroundService : Service() {
 
     private fun updateNotification(state: RunState) {
         val text = when (state) {
-            is RunState.TypingDigits -> "Cycle ${state.cycle + 1} — dialing"
+            is RunState.EnteringNumber -> "Cycle ${state.cycle + 1} — entering number"
+            is RunState.PressingCall -> "Cycle ${state.cycle + 1} — calling"
             is RunState.InCall -> "Cycle ${state.cycle + 1} — in call"
             is RunState.HangingUp -> "Hanging up"
             is RunState.Completed -> "Done"

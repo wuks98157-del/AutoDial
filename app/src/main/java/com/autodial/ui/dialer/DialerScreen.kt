@@ -89,9 +89,10 @@ fun DialerScreen(
             }
 
             if (!state.spamMode) {
-                StepperRow(
+                EditableStepperRow(
                     label = "Cycles",
                     value = state.cycles,
+                    onValueChange = { vm.setCycles(it) },
                     onDecrement = { vm.setCycles(state.cycles - 1) },
                     onIncrement = { vm.setCycles(state.cycles + 1) }
                 )
@@ -100,9 +101,10 @@ fun DialerScreen(
                     style = MaterialTheme.typography.bodyLarge)
             }
 
-            StepperRow(
+            EditableStepperRow(
                 label = "Hang-up after (s)",
                 value = state.hangupSeconds,
+                onValueChange = { vm.setHangupSeconds(it) },
                 onDecrement = { vm.setHangupSeconds(state.hangupSeconds - 1) },
                 onIncrement = { vm.setHangupSeconds(state.hangupSeconds + 1) }
             )
@@ -170,7 +172,16 @@ private fun TargetToggle(
 }
 
 @Composable
-private fun StepperRow(label: String, value: Int, onDecrement: () -> Unit, onIncrement: () -> Unit) {
+private fun EditableStepperRow(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    onDecrement: () -> Unit,
+    onIncrement: () -> Unit
+) {
+    // Keep a local text state so the user can type freely (including transient
+    // empty/invalid values). Push to the VM only when parseable.
+    var text by remember(value) { mutableStateOf(value.toString()) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -179,8 +190,17 @@ private fun StepperRow(label: String, value: Int, onDecrement: () -> Unit, onInc
         Text(label)
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onDecrement) { Text("−") }
-            Text("$value", modifier = Modifier.width(48.dp),
-                style = MaterialTheme.typography.bodyLarge)
+            OutlinedTextField(
+                value = text,
+                onValueChange = { new ->
+                    text = new.filter { it.isDigit() }.take(4)
+                    text.toIntOrNull()?.let(onValueChange)
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                textStyle = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.width(88.dp)
+            )
             IconButton(onClick = onIncrement) { Text("+") }
         }
     }

@@ -15,7 +15,7 @@ import androidx.room.ForeignKey
 )
 data class RecipeStep(
     val targetPackage: String,
-    val stepId: String,          // "OPEN_DIAL_PAD" | "DIGIT_0".."DIGIT_9" | "PRESS_CALL" | "HANG_UP_CONNECTED" | "HANG_UP_RINGING" | "RETURN_TO_DIAL_PAD"
+    val stepId: String,          // "OPEN_DIAL_PAD" | "DIGIT_0".."DIGIT_9" | "CLEAR_DIGITS" | "PRESS_CALL" | "HANG_UP"
     val resourceId: String?,
     val text: String?,
     val className: String?,

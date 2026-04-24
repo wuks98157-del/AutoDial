@@ -31,16 +31,19 @@ fun ActiveRunScreen(
     }
 
     val (number, cycleText, subState, hangupAt) = when (val s = state) {
-        is RunState.TypingDigits -> RunDisplay(s.params.number, "Cycle ${s.cycle + 1} / ${s.params.plannedCycles.let { if (it == 0) "∞" else it.toString() }}", "Dialing", -1L)
+        is RunState.EnteringNumber -> RunDisplay(s.params.number, "Cycle ${s.cycle + 1} / ${s.params.plannedCycles.let { if (it == 0) "∞" else it.toString() }}", "Entering number", -1L)
         is RunState.PressingCall -> RunDisplay(s.params.number, "Cycle ${s.cycle + 1}", "Pressing call", -1L)
         is RunState.InCall -> RunDisplay(s.params.number, "Cycle ${s.cycle + 1}", "In call", s.hangupAt)
         is RunState.HangingUp -> RunDisplay(s.params.number, "Cycle ${s.cycle + 1}", "Hanging up", -1L)
-        is RunState.ReturningToDialPad -> RunDisplay(s.params.number, "Cycle ${s.cycle + 1}", "Returning to dial pad", -1L)
         else -> RunDisplay("", "", "", -1L)
     }
 
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
     Column(
-        Modifier.fillMaxSize().padding(32.dp),
+        Modifier.fillMaxSize().padding(32.dp).systemBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -67,6 +70,7 @@ fun ActiveRunScreen(
         ) {
             Text("STOP", fontSize = 18.sp)
         }
+    }
     }
 }
 

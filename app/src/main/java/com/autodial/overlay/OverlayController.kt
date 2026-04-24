@@ -26,6 +26,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.autodial.model.RunState
+import com.autodial.model.isActive
 import com.autodial.service.RunForegroundService
 import kotlinx.coroutines.delay
 
@@ -171,36 +172,48 @@ private fun OverlayBubble(
     val inCallText: Pair<String, String>? = if (state is RunState.InCall) rememberInCallText(state) else null
 
     val (line1, line2) = when (state) {
-        is RunState.TypingDigits -> "Cycle ${state.cycle + 1}" to "Dialing ${state.params.number}"
+        is RunState.EnteringNumber -> "Cycle ${state.cycle + 1}" to "Dialing ${state.params.number}"
+        is RunState.PressingCall -> "Cycle ${state.cycle + 1}" to "Calling ${state.params.number}"
         is RunState.InCall -> inCallText!!
         is RunState.HangingUp -> "Hanging up" to ""
-        is RunState.ReturningToDialPad -> "Returning to dial pad" to ""
         else -> "" to ""
     }
 
+    // The drag detector lives on the left text column ONLY — if it wraps the
+    // whole bubble, Compose's detectDragGestures consumes events during its
+    // touch-slop-wait phase and the STOP button never sees taps. (That's why
+    // spam-tapping eventually worked; a perfectly still tap sneaks through
+    // the slop window.) Keeping the button in a gesture-clean zone makes STOP
+    // a single-tap every time.
     Box(
         Modifier
             .background(Color(0xCC_00_00_00), RoundedCornerShape(12.dp))
             .padding(horizontal = 12.dp, vertical = 8.dp)
-            .pointerInput(Unit) {
-                detectDragGestures { _, dragAmount ->
-                    onDrag(dragAmount.x, dragAmount.y)
-                }
-            }
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.widthIn(min = 100.dp)) {
+            Column(
+                Modifier
+                    .widthIn(min = 100.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { _, dragAmount ->
+                            onDrag(dragAmount.x, dragAmount.y)
+                        }
+                    }
+            ) {
                 if (line1.isNotEmpty()) Text(line1, color = Color.White, fontSize = 13.sp)
                 if (line2.isNotEmpty()) Text(line2, color = Color(0xFFAAAAAA), fontSize = 11.sp)
+                // Make the drag column always have some height even when text lines are empty,
+                // so the user has a draggable surface.
+                if (line1.isEmpty() && line2.isEmpty()) Spacer(Modifier.height(32.dp))
             }
             Spacer(Modifier.width(12.dp))
             Button(
                 onClick = onStop,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
             ) {
-                Text("STOP", color = Color.White, fontSize = 12.sp)
+                Text("STOP", color = Color.White, fontSize = 14.sp)
             }
         }
     }

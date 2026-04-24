@@ -12,11 +12,19 @@ class RunStateMachine {
 
     private var runId: Long = 0L
 
+    // Set by handleStop() and consulted after each step outcome so a user
+    // STOP routes to StoppedByUser instead of advancing to the next cycle —
+    // otherwise STOP during InCall silently hangs up and keeps looping.
+    private var stopRequested = false
+
+    fun isStopRequested(): Boolean = stopRequested
+
     fun onCommand(cmd: RunCommand) {
         when (cmd) {
             is RunCommand.Start -> {
                 if (_state.value !is RunState.Idle) return
                 runId = cmd.runId
+                stopRequested = false
                 _state.value = RunState.Preparing(cmd.params)
             }
             RunCommand.Stop -> handleStop()
@@ -33,7 +41,8 @@ class RunStateMachine {
                 _state.value = RunState.Failed(runId, "failed:target-app-closed")
 
             event is RunEvent.StepActionFailed ->
-                _state.value = RunState.Failed(runId, event.reason)
+                _state.value = if (stopRequested) RunState.StoppedByUser(runId)
+                               else RunState.Failed(runId, event.reason)
 
             event is RunEvent.StepActionSucceeded -> handleStepSucceeded(event.stepId, s)
 
@@ -44,31 +53,31 @@ class RunStateMachine {
     private fun handleStepSucceeded(stepId: String, s: RunState) {
         _state.value = when {
             stepId == "OPEN_DIAL_PAD" && s is RunState.OpeningDialPad ->
-                RunState.TypingDigits(s.params, s.cycle, 0)
+                RunState.EnteringNumber(s.params, s.cycle)
 
-            stepId.startsWith("DIGIT_") && s is RunState.TypingDigits -> {
-                val nextDigitIndex = s.digitIndex + 1
-                if (nextDigitIndex < s.params.number.length)
-                    RunState.TypingDigits(s.params, s.cycle, nextDigitIndex)
-                else
-                    RunState.PressingCall(s.params, s.cycle)
-            }
+            stepId == "NUMBER_FIELD" && s is RunState.EnteringNumber ->
+                RunState.PressingCall(s.params, s.cycle)
 
             stepId == "PRESS_CALL" && s is RunState.PressingCall ->
                 RunState.InCall(s.params, s.cycle,
                     System.currentTimeMillis() + s.params.hangupSeconds * 1000L)
 
-            stepId in listOf("HANG_UP_CONNECTED", "HANG_UP_RINGING") && s is RunState.HangingUp ->
-                RunState.ReturningToDialPad(s.params, s.cycle)
-
-            stepId == "RETURN_TO_DIAL_PAD" && s is RunState.ReturningToDialPad -> {
-                val nextCycle = s.cycle + 1
-                val done = when {
-                    s.params.plannedCycles == 0 -> nextCycle >= s.params.spamModeSafetyCap
-                    else -> nextCycle >= s.params.plannedCycles
+            stepId == "HANG_UP" && s is RunState.HangingUp -> {
+                if (stopRequested) {
+                    RunState.StoppedByUser(runId)
+                } else {
+                    val nextCycle = s.cycle + 1
+                    val done = when {
+                        s.params.plannedCycles == 0 -> nextCycle >= s.params.spamModeSafetyCap
+                        else -> nextCycle >= s.params.plannedCycles
+                    }
+                    when {
+                        done -> RunState.Completed(runId)
+                        TargetApps.retainsNumberAfterHangup(s.params.targetPackage) ->
+                            RunState.PressingCall(s.params, nextCycle)
+                        else -> RunState.EnteringNumber(s.params, nextCycle)
+                    }
                 }
-                if (done) RunState.Completed(runId)
-                else RunState.TypingDigits(s.params, nextCycle, 0)
             }
 
             else -> _state.value
@@ -78,9 +87,21 @@ class RunStateMachine {
     private fun handleStop() {
         val s = _state.value
         if (s.isTerminal() || s is RunState.Idle) return
+        stopRequested = true
         when (s) {
+            // InCall: flip to HangingUp so the overlay/notification show the
+            // stop intent. driveState(InCall) watches for this transition and
+            // skips its hangup-timer wait so the hangup fires immediately.
             is RunState.InCall -> _state.value = RunState.HangingUp(s.params, s.cycle)
-            is RunState.PressingCall -> _state.value = RunState.HangingUp(s.params, s.cycle)
+            // PressingCall: don't transition. The in-flight PRESS_CALL will
+            // complete naturally, the state machine will advance to InCall,
+            // and driveState(InCall) will see stopRequested and short-circuit
+            // straight into the hangup. Trying to interrupt a call that's
+            // mid-placement leaves the line hung.
+            is RunState.PressingCall -> { /* stopRequested is enough */ }
+            // HangingUp: a hangup is already in flight. Let it finish; the
+            // stopRequested gate in handleStepSucceeded routes to StoppedByUser.
+            is RunState.HangingUp -> { /* stopRequested is enough */ }
             else -> _state.value = RunState.StoppedByUser(runId)
         }
     }
@@ -93,6 +114,11 @@ class RunStateMachine {
     fun advanceToInCall(params: RunParams, cycle: Int) {
         _state.value = RunState.InCall(params, cycle,
             System.currentTimeMillis() + params.hangupSeconds * 1000L)
+    }
+
+    fun markHangingUp() {
+        val s = _state.value
+        if (s is RunState.InCall) _state.value = RunState.HangingUp(s.params, s.cycle)
     }
 
     fun markHangupComplete(runId: Long, completed: Boolean) {

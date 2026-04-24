@@ -1,12 +1,9 @@
-import com.google.protobuf.gradle.id
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.protobuf)
 }
 
 android {
@@ -51,22 +48,10 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
-
-    room {
-        schemaDirectory("$projectDir/schemas")
-    }
 }
 
-protobuf {
-    protoc { artifact = "com.google.protobuf:protoc:4.28.2" }
-    generateProtoTasks {
-        all().forEach { task ->
-            task.builtins {
-                id("java") { option("lite") }
-                id("kotlin") { option("lite") }
-            }
-        }
-    }
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -93,8 +78,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    implementation(libs.datastore)
-    implementation(libs.protobuf.kotlin.lite)
+    implementation(libs.datastore.preferences)
 
     implementation(libs.coroutines.android)
 

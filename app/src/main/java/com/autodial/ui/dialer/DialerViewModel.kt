@@ -7,6 +7,7 @@ import com.autodial.data.db.entity.Recipe
 import com.autodial.data.repository.RecipeRepository
 import com.autodial.data.repository.SettingsRepository
 import com.autodial.model.RunParams
+import com.autodial.model.isActive
 import com.autodial.service.RunForegroundService
 import com.autodial.ui.common.PermissionChecker
 import dagger.hilt.android.lifecycle.HiltViewModel

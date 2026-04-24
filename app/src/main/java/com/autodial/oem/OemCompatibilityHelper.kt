@@ -94,12 +94,17 @@ class OemCompatibilityHelper private constructor(
             id = "oppo_battery",
             displayName = "App Power Management",
             description = "Settings → Battery → Power saving → App power management → AutoDial → enable all 3 toggles",
-            canVerify = false, verify = null, deepLinkIntent = null
+            canVerify = false, verify = null,
+            // Fallback: open AutoDial's app info page; user navigates to Battery from there.
+            deepLinkIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", "com.autodial", null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
         ),
         OemSetting(
             id = "oppo_lock_recents",
             displayName = "Lock in Recents",
-            description = "Open Recents, tap the lock icon on the AutoDial card",
+            description = "Open Recents, tap the lock icon on the AutoDial card (this is a gesture — no settings screen for it)",
             canVerify = false, verify = null, deepLinkIntent = null
         )
     )

@@ -27,7 +27,8 @@ fun NavGraph(navController: NavHostController, startDestination: String) {
                     navController.navigate(Screen.Dialer.route) {
                         popUpTo(Screen.Onboarding.route) { inclusive = true }
                     }
-                }
+                },
+                onOpenWizard = { pkg -> navController.navigate(Screen.Wizard(pkg).route) }
             )
         }
 

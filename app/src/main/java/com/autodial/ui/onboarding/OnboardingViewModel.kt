@@ -7,7 +7,9 @@ import android.os.Build
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.autodial.data.repository.RecipeRepository
 import com.autodial.data.repository.SettingsRepository
+import com.autodial.model.TargetApps
 import com.autodial.oem.OemCompatibilityHelper
 import com.autodial.ui.common.PermissionChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,6 +49,7 @@ data class OnboardingUiState(
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val settingsRepo: SettingsRepository,
+    private val recipeRepo: RecipeRepository,
     private val permChecker: PermissionChecker,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -55,6 +58,19 @@ class OnboardingViewModel @Inject constructor(
         oemHelper = OemCompatibilityHelper.forManufacturer(android.os.Build.MANUFACTURER)
     ))
     val state: StateFlow<OnboardingUiState> = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            recipeRepo.observeRecipe(TargetApps.BIZPHONE).collect { recipe ->
+                _state.update { it.copy(bizPhoneRecipeRecorded = recipe != null) }
+            }
+        }
+        viewModelScope.launch {
+            recipeRepo.observeRecipe(TargetApps.MOBILE_VOIP).collect { recipe ->
+                _state.update { it.copy(mobileVoipRecipeRecorded = recipe != null) }
+            }
+        }
+    }
 
     fun refreshPermissions() {
         val perms = permChecker.checkAll()

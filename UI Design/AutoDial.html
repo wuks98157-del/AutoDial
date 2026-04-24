@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AutoDial — Android Mockups</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100%; background: #161412; color: #fff; font-family: Roboto, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  button { font-family: inherit; }
+  @keyframes ad-blink { 50% { opacity: 0; } }
+  @keyframes ad-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
+
+  .sheet {
+    min-height: 100vh;
+    padding: 56px 40px 64px;
+    background:
+      radial-gradient(ellipse at top, #1f1a15 0%, #0d0b0a 60%);
+  }
+  .sheet-header { max-width: 1920px; margin: 0 auto 40px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .sheet-title { font-family: Roboto, system-ui, sans-serif; font-weight: 900; font-size: 44px; letter-spacing: -0.02em; margin: 0; color: #fff; }
+  .sheet-title .accent { color: #FF6B00; }
+  .sheet-sub { margin: 8px 0 0; font-family: 'Roboto Mono', ui-monospace, Menlo, monospace; font-size: 13px; color: #8a837b; letter-spacing: 0.08em; text-transform: uppercase; }
+  .sheet-meta { font-family: 'Roboto Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: #8a837b; letter-spacing: 0.12em; text-transform: uppercase; text-align: right; line-height: 1.7; }
+  .sheet-meta b { color: #fff; font-weight: 700; }
+
+  .phones {
+    max-width: 1920px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px;
+    align-items: start; justify-items: center;
+  }
+  @media (max-width: 1600px) { .phones { grid-template-columns: repeat(2, 1fr); gap: 48px 24px; } }
+  @media (max-width: 820px)  { .phones { grid-template-columns: 1fr; } }
+
+  .phone-cell { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .phone-label {
+    font-family: 'Roboto Mono', ui-monospace, Menlo, monospace;
+    font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: #FF6B00; font-weight: 700;
+  }
+  .phone-label .n { color: #6B6B6B; margin-right: 10px; }
+  .phone-label .t { color: #fff; margin-left: 10px; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="sheet-header">
+    <div>
+      <h1 class="sheet-title">Auto<span class="accent">Dial</span> <span style="color:#6B6B6B;font-weight:500;font-size:28px;">· Android mockups</span></h1>
+      <p class="sheet-sub">Dark utilitarian · Portrait · Sales &amp; telemarketing tool · v0.1</p>
+    </div>
+    <div class="sheet-meta">
+      412 × 892 · ldpi<br/>
+      <b>4 screens</b> · dialer → run → settings → history
+    </div>
+  </div>
+
+  <div class="phones">
+    <div class="phone-cell">
+      <div class="phone-label"><span class="n">01</span>DIALER<span class="t">HOME</span></div>
+      <div id="mount-dialer"></div>
+    </div>
+    <div class="phone-cell">
+      <div class="phone-label"><span class="n">02</span>ACTIVE RUN<span class="t">LIVE</span></div>
+      <div id="mount-active"></div>
+    </div>
+    <div class="phone-cell">
+      <div class="phone-label"><span class="n">03</span>SETTINGS<span class="t">DEFAULTS</span></div>
+      <div id="mount-settings"></div>
+    </div>
+    <div class="phone-cell">
+      <div class="phone-label"><span class="n">04</span>HISTORY<span class="t">LOG</span></div>
+      <div id="mount-history"></div>
+    </div>
+  </div>
+</div>
+
+<script type="text/babel" data-presets="react">
+
+// Android.jsx — Simplified Android (Material 3) device frame
+// Status bar + top app bar + content + gesture nav + keyboard.
+// Based on Figma M3 spec. No dependencies, no image assets.
+
+const MD_C = {
+  surface: '#f4fbf8',
+  surfaceVariant: '#dae5e1',
+  inverseOnSurface: '#ecf2ef',
+  secondaryContainer: '#cde8e1',
+  primaryFixedDim: '#83d5c6',
+  onSurface: '#171d1b',
+  onSurfaceVar: '#49454f',
+  onPrimaryContainer: '#00201c',
+  primary: '#006a60',
+  frameBorder: 'rgba(116,119,117,0.5)',
+};
+
+// ─────────────────────────────────────────────────────────────
+// Status bar (time left, wifi/cell/battery right)
+// ─────────────────────────────────────────────────────────────
+function AndroidStatusBar({ dark = false }) {
+  const c = dark ? '#fff' : MD_C.onSurface;
+  return (
+    <div style={{
+      height: 40, display: 'flex', alignItems: 'center',
+      justifyContent: 'space-between', padding: '0 16px',
+      position: 'relative',
+      fontFamily: 'Roboto, system-ui, sans-serif',
+    }}>
+      {/* time left */}
+      <div style={{ width: 128, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 400, letterSpacing: 0.25, lineHeight: '20px', color: c }}>9:30</span>
+      </div>
+      {/* camera punch-hole (center) */}
+      <div style={{
+        position: 'absolute', left: '50%', top: 8, transform: 'translateX(-50%)',
+        width: 24, height: 24, borderRadius: 100, background: '#2e2e2e',
+      }} />
+      {/* status icons right */}
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div style={{ display: 'flex', paddingRight: 2 }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" style={{ marginRight: -2 }}>
+            <path d="M8 13.3L.67 5.97a10.37 10.37 0 0114.66 0L8 13.3z" fill={c}/>
+          </svg>
+          <svg width="16" height="16" viewBox="0 0 16 16" style={{ marginRight: -2 }}>
+            <path d="M14.67 14.67V1.33L1.33 14.67h13.34z" fill={c}/>
+          </svg>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <rect x="3.75" y="2" width="8.5" height="13" rx="1.5" fill={c}/>
+          <rect x="5.5" y="0.9" width="5" height="2" rx="0.5" fill={c}/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Top app bar (Material 3 small/medium)
+// ─────────────────────────────────────────────────────────────
+function AndroidAppBar({ title = 'Title', large = false }) {
+  const iconDot = (
+    <div style={{
+      width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{ width: 22, height: 22, borderRadius: '50%', background: MD_C.onSurfaceVar, opacity: 0.3 }} />
+    </div>
+  );
+  return (
+    <div style={{ background: MD_C.surface, padding: '4px 4px 0' }}>
+      <div style={{ height: 56, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {iconDot}
+        {!large && (
+          <span style={{
+            flex: 1, fontSize: 22, fontWeight: 400, color: MD_C.onSurface,
+            fontFamily: 'Roboto, system-ui, sans-serif',
+          }}>{title}</span>
+        )}
+        {large && <div style={{ flex: 1 }} />}
+        {iconDot}
+      </div>
+      {large && (
+        <div style={{
+          padding: '16px 16px 20px',
+          fontSize: 28, fontWeight: 400, color: MD_C.onSurface,
+          fontFamily: 'Roboto, system-ui, sans-serif',
+        }}>{title}</div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// List item (Material 3)
+// ─────────────────────────────────────────────────────────────
+function AndroidListItem({ headline, supporting, leading }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 16,
+      padding: '12px 16px', minHeight: 56, boxSizing: 'border-box',
+      fontFamily: 'Roboto, system-ui, sans-serif',
+    }}>
+      {leading && (
+        <div style={{
+          width: 40, height: 40, borderRadius: '50%',
+          background: MD_C.primary, color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 18, fontWeight: 500, flexShrink: 0,
+        }}>{leading}</div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 16, color: MD_C.onSurface, lineHeight: '24px' }}>{headline}</div>
+        {supporting && (
+          <div style={{ fontSize: 14, color: MD_C.onSurfaceVar, lineHeight: '20px' }}>{supporting}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Gesture nav bar (pill)
+// ─────────────────────────────────────────────────────────────
+function AndroidNavBar({ dark = false }) {
+  return (
+    <div style={{
+      height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        width: 108, height: 4, borderRadius: 2,
+        background: dark ? '#fff' : MD_C.onSurface, opacity: 0.4,
+      }} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Device frame — wraps everything
+// ─────────────────────────────────────────────────────────────
+function AndroidDevice({
+  children, width = 412, height = 892, dark = false,
+  title, large = false, keyboard = false,
+}) {
+  return (
+    <div style={{
+      width, height, borderRadius: 18, overflow: 'hidden',
+      background: dark ? '#1d1b20' : MD_C.surface,
+      border: `8px solid ${MD_C.frameBorder}`,
+      boxShadow: '0 30px 80px rgba(0,0,0,0.25)',
+      display: 'flex', flexDirection: 'column', boxSizing: 'border-box',
+    }}>
+      <AndroidStatusBar dark={dark} />
+      {title !== undefined && <AndroidAppBar title={title} large={large} />}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {children}
+      </div>
+      {keyboard && <AndroidKeyboard />}
+      <AndroidNavBar dark={dark} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Keyboard — Gboard (Material 3)
+// ─────────────────────────────────────────────────────────────
+function AndroidKeyboard() {
+  let _k = 0;
+  const key = (l, { flex = 1, bg = MD_C.surface, r = 6, minW, fs = 21 } = {}) => (
+    <div key={_k++} style={{
+      height: 46, borderRadius: r, flex, minWidth: minW,
+      background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: 'Roboto, system-ui', fontSize: fs,
+      color: MD_C.onPrimaryContainer,
+    }}>{l}</div>
+  );
+  const row = (keys, style = {}) => (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', ...style }}>
+      {keys.map(l => key(l))}
+    </div>
+  );
+  return (
+    <div style={{
+      background: MD_C.inverseOnSurface, padding: '0 8px 8px',
+      display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      {/* navbar spacer (icons omitted) */}
+      <div style={{ height: 44 }} />
+      {/* key rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {row(['q','w','e','r','t','y','u','i','o','p'])}
+        {row(['a','s','d','f','g','h','j','k','l'], { padding: '0 20px' })}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {key('', { bg: MD_C.surfaceVariant })}
+          <div style={{ display: 'flex', gap: 6, flex: 7, minWidth: 274 }}>
+            {['z','x','c','v','b','n','m'].map(l => key(l))}
+          </div>
+          {key('', { bg: MD_C.surfaceVariant })}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {key('?123', { bg: MD_C.secondaryContainer, r: 100, minW: 58, fs: 14 })}
+          {key(',', { bg: MD_C.surfaceVariant })}
+          {key('', { flex: 3, minW: 154 })}
+          {key('.', { bg: MD_C.surfaceVariant })}
+          {key('', { bg: MD_C.primaryFixedDim, r: 100, minW: 58 })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, {
+  AndroidDevice, AndroidStatusBar, AndroidAppBar, AndroidListItem, AndroidNavBar, AndroidKeyboard,
+});
+
+</script>
+
+<script type="text/babel" data-presets="react">
+// screens.jsx — AutoDial screens
+
+const AD = {
+  bg: '#0D0D0D',
+  surface: '#1A1A1A',
+  elevated: '#242424',
+  border: '#2E2E2E',
+  text: '#FFFFFF',
+  textDim: '#A0A0A0',
+  textMute: '#6B6B6B',
+  orange: '#FF6B00',
+  orangeDeep: '#E85D00',
+  red: '#E53935',
+  redDeep: '#C62828',
+  green: '#34C759',
+};
+
+const FONT = "Roboto, 'Helvetica Neue', Arial, sans-serif";
+const MONO = "'Roboto Mono', ui-monospace, Menlo, monospace";
+
+// ── Icons (simple stroke SVGs) ──────────────────────────────
+const Icon = ({ d, size = 24, stroke = 'currentColor', sw = 2, fill = 'none' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke}
+    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    {typeof d === 'string' ? <path d={d} /> : d}
+  </svg>
+);
+const IconGear = (p) => <Icon size={p.size || 22} d={
+  <>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </>
+} {...p} />;
+const IconHistory = (p) => <Icon size={p.size || 22} d={
+  <>
+    <path d="M3 12a9 9 0 1 0 3-6.7" />
+    <path d="M3 4v5h5" />
+    <path d="M12 7v5l3 2" />
+  </>
+} {...p} />;
+const IconBack = (p) => <Icon size={p.size || 22} d="M15 18l-6-6 6-6" {...p} />;
+const IconTrash = (p) => <Icon size={p.size || 20} d={
+  <>
+    <path d="M3 6h18" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+  </>
+} {...p} />;
+const IconChevron = (p) => <Icon size={p.size || 18} d="M9 6l6 6-6 6" {...p} />;
+const IconCheck = (p) => <Icon size={p.size || 22} d="M5 12l5 5L20 7" sw={3} {...p} />;
+
+// ── Header bar ──────────────────────────────────────────────
+function Header({ left, right, title }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '18px 20px 14px', background: AD.bg,
+      borderBottom: `1px solid ${AD.border}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 72 }}>
+        {left}
+      </div>
+      <div style={{
+        fontFamily: FONT, fontWeight: 900, letterSpacing: '-0.01em',
+        color: AD.text, fontSize: title === 'AutoDial' ? 22 : 18,
+        textTransform: title === 'AutoDial' ? 'none' : 'uppercase',
+      }}>
+        {title === 'AutoDial' ? (
+          <span>Auto<span style={{ color: AD.orange }}>Dial</span></span>
+        ) : title}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 72, justifyContent: 'flex-end' }}>
+        {right}
+      </div>
+    </div>
+  );
+}
+
+const HeaderBtn = ({ children, onClick, color = AD.textDim }) => (
+  <button onClick={onClick} style={{
+    width: 44, height: 44, border: 'none', background: 'transparent',
+    color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer', borderRadius: 10,
+  }}>{children}</button>
+);
+
+// ── Field primitives ────────────────────────────────────────
+const labelStyle = {
+  fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.12em',
+  color: AD.textMute, textTransform: 'uppercase', marginBottom: 8,
+};
+
+function BigNumberField({ value, focused }) {
+  return (
+    <div style={{
+      background: AD.surface, borderRadius: 12,
+      border: `2px solid ${focused ? AD.orange : AD.border}`,
+      padding: '20px 22px', position: 'relative',
+    }}>
+      <div style={labelStyle}>Phone number</div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        fontFamily: MONO, fontSize: 34, fontWeight: 700,
+        color: AD.text, letterSpacing: '0.02em', lineHeight: 1,
+      }}>
+        <span>{value}</span>
+        {focused && <span style={{
+          display: 'inline-block', width: 3, height: 34, background: AD.orange,
+          marginLeft: 4, animation: 'ad-blink 1s steps(2) infinite',
+        }} />}
+      </div>
+      <div style={{ marginTop: 10, fontFamily: FONT, fontSize: 12, color: AD.textMute, letterSpacing: '0.04em' }}>
+        NUMERIC KEYPAD · INTL FORMAT OK
+      </div>
+    </div>
+  );
+}
+
+function SmallField({ label, value, unit }) {
+  return (
+    <div style={{
+      background: AD.surface, borderRadius: 12,
+      border: `1px solid ${AD.border}`, padding: '16px 16px',
+      flex: 1,
+    }}>
+      <div style={labelStyle}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 30, fontWeight: 700,
+          color: AD.text, lineHeight: 1,
+        }}>{value}</div>
+        {unit && <div style={{
+          fontFamily: FONT, fontSize: 12, fontWeight: 600,
+          color: AD.textMute, textTransform: 'uppercase', letterSpacing: '0.08em',
+        }}>{unit}</div>}
+      </div>
+    </div>
+  );
+}
+
+function TargetToggle({ value }) {
+  const opt = (key, label) => {
+    const active = value === key;
+    return (
+      <div style={{
+        flex: 1, height: 54, borderRadius: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        background: active ? AD.orange : 'transparent',
+        color: active ? '#000' : AD.textDim,
+        fontFamily: FONT, fontSize: 15, fontWeight: 800,
+        letterSpacing: '0.04em', textTransform: 'uppercase',
+        transition: 'all .15s',
+      }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: active ? '#000' : AD.textMute,
+        }} />
+        {label}
+      </div>
+    );
+  };
+  return (
+    <div style={{
+      background: AD.surface, borderRadius: 14,
+      border: `1px solid ${AD.border}`, padding: 6,
+      display: 'flex', gap: 4,
+    }}>
+      {opt('whatsapp', 'WhatsApp')}
+      {opt('bizphone', 'BizPhone')}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCREEN 1 — Dialer
+// ═══════════════════════════════════════════════════════════════
+function DialerScreen() {
+  return (
+    <div style={{
+      height: '100%', background: AD.bg, color: AD.text,
+      display: 'flex', flexDirection: 'column', fontFamily: FONT,
+    }}>
+      <Header
+        title="AutoDial"
+        left={<HeaderBtn><IconHistory /></HeaderBtn>}
+        right={<HeaderBtn><IconGear /></HeaderBtn>}
+      />
+
+      <div style={{ flex: 1, padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Status row */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          fontSize: 11, fontWeight: 700, letterSpacing: '0.14em',
+          color: AD.textMute, textTransform: 'uppercase',
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: AD.green }} />
+          <span>Ready</span>
+          <span style={{ flex: 1 }} />
+          <span>v2.4.1</span>
+        </div>
+
+        <BigNumberField value="+1 415 555 0142" focused />
+
+        <div style={{ display: 'flex', gap: 12 }}>
+          <SmallField label="Cycles" value="10" unit="×" />
+          <SmallField label="Hang-up after" value="25" unit="sec" />
+        </div>
+
+        <div>
+          <div style={labelStyle}>Target app</div>
+          <TargetToggle value="whatsapp" />
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Summary line */}
+        <div style={{
+          padding: '12px 16px', background: AD.surface, borderRadius: 10,
+          border: `1px dashed ${AD.border}`,
+          fontFamily: MONO, fontSize: 12, color: AD.textDim,
+          display: 'flex', justifyContent: 'space-between',
+        }}>
+          <span>EST. TOTAL</span>
+          <span style={{ color: AD.text, fontWeight: 700 }}>≈ 4 min 10 sec</span>
+        </div>
+
+        {/* START */}
+        <button style={{
+          height: 76, border: 'none', background: AD.orange, color: '#000',
+          borderRadius: 14, fontFamily: FONT, fontSize: 22, fontWeight: 900,
+          letterSpacing: '0.18em', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+          boxShadow: `0 4px 0 ${AD.orangeDeep}`,
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#000"><path d="M6 4l14 8L6 20z"/></svg>
+          START
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCREEN 2 — Active Run
+// ═══════════════════════════════════════════════════════════════
+function ActiveRunScreen() {
+  const seconds = 17;
+  const total = 25;
+  const pct = seconds / total;
+  const R = 108;
+  const C = 2 * Math.PI * R;
+
+  return (
+    <div style={{
+      height: '100%', background: AD.bg, color: AD.text,
+      display: 'flex', flexDirection: 'column', fontFamily: FONT,
+    }}>
+      {/* LIVE bar */}
+      <div style={{
+        background: AD.red, color: '#fff', padding: '10px 20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        fontFamily: FONT, fontWeight: 800, letterSpacing: '0.16em',
+        fontSize: 12, textTransform: 'uppercase',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 10, height: 10, borderRadius: '50%', background: '#fff',
+            animation: 'ad-pulse 1s infinite',
+          }} />
+          LIVE — Run in progress
+        </div>
+        <span style={{ fontFamily: MONO, fontWeight: 700 }}>00:47</span>
+      </div>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '22px 18px 18px' }}>
+        {/* Attempt counter */}
+        <div style={{
+          textAlign: 'center', fontSize: 12, fontWeight: 700, letterSpacing: '0.2em',
+          color: AD.textMute, textTransform: 'uppercase',
+        }}>
+          Dialing via WhatsApp
+        </div>
+
+        <div style={{
+          marginTop: 18, fontFamily: MONO, fontWeight: 700, fontSize: 30,
+          color: AD.text, textAlign: 'center', letterSpacing: '0.02em',
+        }}>
+          +1 415 555 0142
+        </div>
+
+        <div style={{
+          marginTop: 6, textAlign: 'center',
+          fontFamily: FONT, fontSize: 14, fontWeight: 700, letterSpacing: '0.08em',
+          color: AD.orange, textTransform: 'uppercase',
+        }}>
+          Attempt <span style={{ color: AD.text }}>3</span> of <span style={{ color: AD.text }}>10</span>
+        </div>
+
+        {/* Circular countdown */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}>
+          <div style={{ position: 'relative', width: 256, height: 256 }}>
+            <svg width="256" height="256" viewBox="0 0 256 256">
+              <circle cx="128" cy="128" r={R} fill="none" stroke={AD.elevated} strokeWidth="14" />
+              <circle cx="128" cy="128" r={R} fill="none" stroke={AD.orange} strokeWidth="14"
+                strokeLinecap="round" strokeDasharray={C}
+                strokeDashoffset={C * (1 - pct)}
+                transform="rotate(-90 128 128)" />
+            </svg>
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex',
+              flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div style={{
+                fontFamily: MONO, fontSize: 88, fontWeight: 700, lineHeight: 1,
+                color: AD.text, letterSpacing: '-0.02em',
+              }}>{seconds}</div>
+              <div style={{
+                fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.22em',
+                color: AD.textMute, textTransform: 'uppercase', marginTop: 8,
+              }}>Sec until hang-up</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats strip */}
+        <div style={{
+          marginTop: 22, display: 'flex', gap: 8,
+          background: AD.surface, borderRadius: 12, padding: 4,
+          border: `1px solid ${AD.border}`,
+        }}>
+          {[
+            { k: 'Completed', v: '2' },
+            { k: 'Remaining', v: '7' },
+            { k: 'Hang-up', v: '25s' },
+          ].map((s, i) => (
+            <div key={i} style={{
+              flex: 1, padding: '10px 8px', textAlign: 'center',
+              borderRight: i < 2 ? `1px solid ${AD.border}` : 'none',
+            }}>
+              <div style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: AD.text }}>{s.v}</div>
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.16em',
+                color: AD.textMute, textTransform: 'uppercase', marginTop: 2,
+              }}>{s.k}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* STOP */}
+        <button style={{
+          height: 76, border: 'none', background: AD.red, color: '#fff',
+          borderRadius: 14, fontFamily: FONT, fontSize: 22, fontWeight: 900,
+          letterSpacing: '0.22em', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+          boxShadow: `0 4px 0 ${AD.redDeep}`,
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+          STOP
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCREEN 3 — Settings
+// ═══════════════════════════════════════════════════════════════
+function SettingsRow({ label, value, sub, children }) {
+  return (
+    <div style={{
+      padding: '18px 20px', background: AD.surface,
+      borderBottom: `1px solid ${AD.border}`,
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.14em',
+            color: AD.textMute, textTransform: 'uppercase',
+          }}>{label}</div>
+          {sub && <div style={{ fontFamily: FONT, fontSize: 13, color: AD.textDim, marginTop: 4 }}>{sub}</div>}
+        </div>
+        {children || (
+          <div style={{
+            fontFamily: MONO, fontSize: 22, fontWeight: 700, color: AD.text,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            {value}
+            <IconChevron stroke={AD.textMute} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SettingsScreen() {
+  return (
+    <div style={{
+      height: '100%', background: AD.bg, color: AD.text,
+      display: 'flex', flexDirection: 'column', fontFamily: FONT,
+    }}>
+      <Header
+        title="SETTINGS"
+        left={<HeaderBtn><IconBack /></HeaderBtn>}
+        right={<div style={{ width: 44 }} />}
+      />
+
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <div style={{
+          padding: '18px 20px 6px',
+          fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.18em',
+          color: AD.textMute, textTransform: 'uppercase',
+        }}>Defaults</div>
+
+        <div style={{ borderTop: `1px solid ${AD.border}`, borderBottom: `1px solid ${AD.border}` }}>
+          <SettingsRow label="Hang-up duration" sub="Auto-terminate each call" value={<><span>25</span><span style={{ color: AD.textMute, fontSize: 14, marginLeft: 4 }}>sec</span></>} />
+          <SettingsRow label="Number of cycles" sub="Times to repeat per run" value="10" />
+          <SettingsRow label="Target app" sub="Default destination">
+            <div style={{ display: 'flex', gap: 6, background: AD.elevated, padding: 4, borderRadius: 8 }}>
+              <div style={{
+                padding: '6px 14px', borderRadius: 6, background: AD.orange, color: '#000',
+                fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
+              }}>WhatsApp</div>
+              <div style={{
+                padding: '6px 14px', borderRadius: 6, color: AD.textDim,
+                fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
+              }}>BizPhone</div>
+            </div>
+          </SettingsRow>
+        </div>
+
+        <div style={{
+          padding: '24px 20px 6px',
+          fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.18em',
+          color: AD.textMute, textTransform: 'uppercase',
+        }}>Behavior</div>
+
+        <div style={{ borderTop: `1px solid ${AD.border}`, borderBottom: `1px solid ${AD.border}` }}>
+          <SettingsRow label="Vibrate on connect" sub="Haptic feedback when dialing starts">
+            <Switch on />
+          </SettingsRow>
+          <SettingsRow label="Keep screen on" sub="Prevent sleep during run">
+            <Switch on />
+          </SettingsRow>
+          <SettingsRow label="Sound alerts" sub="Play tone on completion">
+            <Switch />
+          </SettingsRow>
+        </div>
+
+        <div style={{ padding: '22px 20px 10px' }}>
+          <div style={{
+            fontFamily: MONO, fontSize: 11, color: AD.textMute, letterSpacing: '0.08em',
+          }}>
+            Build 2.4.1 · device-id 7F3A-2B91
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '14px 18px 18px', background: AD.bg, borderTop: `1px solid ${AD.border}` }}>
+        <button style={{
+          width: '100%', height: 64, border: 'none', background: AD.orange, color: '#000',
+          borderRadius: 14, fontFamily: FONT, fontSize: 18, fontWeight: 900,
+          letterSpacing: '0.18em', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          boxShadow: `0 4px 0 ${AD.orangeDeep}`,
+        }}>
+          <IconCheck stroke="#000" sw={3} /> SAVE
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Switch({ on }) {
+  return (
+    <div style={{
+      width: 52, height: 30, borderRadius: 999,
+      background: on ? AD.orange : AD.elevated,
+      border: `1px solid ${on ? AD.orange : AD.border}`,
+      position: 'relative', transition: 'all .2s',
+    }}>
+      <div style={{
+        position: 'absolute', top: 3, left: on ? 25 : 3,
+        width: 22, height: 22, borderRadius: '50%',
+        background: on ? '#000' : AD.textDim, transition: 'all .2s',
+      }} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCREEN 4 — History
+// ═══════════════════════════════════════════════════════════════
+const HISTORY = [
+  { d: 'Today', t: '14:32', num: '+1 415 555 0142', cycles: '10/10', app: 'WhatsApp', status: 'done' },
+  { d: 'Today', t: '14:08', num: '+44 20 7946 0958', cycles: '10/10', app: 'WhatsApp', status: 'done' },
+  { d: 'Today', t: '13:41', num: '+1 646 555 0199', cycles: '4/10', app: 'BizPhone', status: 'stopped' },
+  { d: 'Today', t: '12:17', num: '+33 1 70 18 29 01', cycles: '10/10', app: 'WhatsApp', status: 'done' },
+  { d: 'Yesterday', t: '17:55', num: '+1 212 555 0144', cycles: '5/5', app: 'BizPhone', status: 'done' },
+  { d: 'Yesterday', t: '16:23', num: '+49 30 901820', cycles: '10/10', app: 'WhatsApp', status: 'done' },
+  { d: 'Yesterday', t: '11:04', num: '+1 415 555 0199', cycles: '0/10', app: 'WhatsApp', status: 'failed' },
+  { d: 'Apr 22', t: '18:10', num: '+1 305 555 0187', cycles: '10/10', app: 'BizPhone', status: 'done' },
+  { d: 'Apr 22', t: '15:48', num: '+81 3 6264 8201', cycles: '8/10', app: 'WhatsApp', status: 'stopped' },
+  { d: 'Apr 22', t: '10:02', num: '+1 718 555 0111', cycles: '10/10', app: 'WhatsApp', status: 'done' },
+];
+
+function StatusDot({ status }) {
+  const color = status === 'done' ? AD.green : status === 'stopped' ? AD.orange : AD.red;
+  return <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />;
+}
+
+function HistoryScreen() {
+  return (
+    <div style={{
+      height: '100%', background: AD.bg, color: AD.text,
+      display: 'flex', flexDirection: 'column', fontFamily: FONT,
+    }}>
+      <Header
+        title="HISTORY"
+        left={<HeaderBtn><IconBack /></HeaderBtn>}
+        right={<HeaderBtn color={AD.orange}><IconTrash /></HeaderBtn>}
+      />
+
+      {/* summary strip */}
+      <div style={{
+        display: 'flex', padding: '14px 20px', gap: 18,
+        borderBottom: `1px solid ${AD.border}`, background: AD.bg,
+      }}>
+        {[
+          { k: 'Runs', v: '47' },
+          { k: 'Calls', v: '412' },
+          { k: 'Success', v: '94%' },
+        ].map((s, i) => (
+          <div key={i} style={{ flex: 1 }}>
+            <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: AD.text, lineHeight: 1 }}>{s.v}</div>
+            <div style={{
+              marginTop: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.16em',
+              color: AD.textMute, textTransform: 'uppercase',
+            }}>{s.k}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {HISTORY.map((h, i) => {
+          const isGroupStart = i === 0 || HISTORY[i-1].d !== h.d;
+          return (
+            <React.Fragment key={i}>
+              {isGroupStart && (
+                <div style={{
+                  padding: '14px 20px 6px', background: AD.bg,
+                  fontSize: 10, fontWeight: 700, letterSpacing: '0.2em',
+                  color: AD.textMute, textTransform: 'uppercase',
+                }}>{h.d}</div>
+              )}
+              <div style={{
+                padding: '14px 20px',
+                background: i % 2 === 0 ? AD.surface : AD.bg,
+                borderBottom: `1px solid ${AD.border}`,
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}>
+                <StatusDot status={h.status} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontFamily: MONO, fontSize: 15, fontWeight: 700, color: AD.text,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{h.num}</div>
+                  <div style={{
+                    marginTop: 3, fontFamily: FONT, fontSize: 11, fontWeight: 600,
+                    color: AD.textMute, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    display: 'flex', gap: 10,
+                  }}>
+                    <span>{h.t}</span>
+                    <span>·</span>
+                    <span>{h.app}</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{
+                    fontFamily: MONO, fontSize: 15, fontWeight: 700,
+                    color: h.status === 'failed' ? AD.red : h.status === 'stopped' ? AD.orange : AD.text,
+                  }}>{h.cycles}</div>
+                  <div style={{
+                    marginTop: 3, fontSize: 9, fontWeight: 700, letterSpacing: '0.18em',
+                    color: AD.textMute, textTransform: 'uppercase',
+                  }}>Cycles</div>
+                </div>
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { DialerScreen, ActiveRunScreen, SettingsScreen, HistoryScreen, AD_FONT: FONT });
+
+</script>
+
+<script type="text/babel" data-presets="react">
+const PHONE_W = 412;
+const PHONE_H = 892;
+
+function Phone({ children }) {
+  return (
+    <AndroidDevice width={PHONE_W} height={PHONE_H} dark>
+      {children}
+    </AndroidDevice>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('mount-dialer')).render(<Phone><DialerScreen /></Phone>);
+ReactDOM.createRoot(document.getElementById('mount-active')).render(<Phone><ActiveRunScreen /></Phone>);
+ReactDOM.createRoot(document.getElementById('mount-settings')).render(<Phone><SettingsScreen /></Phone>);
+ReactDOM.createRoot(document.getElementById('mount-history')).render(<Phone><HistoryScreen /></Phone>);
+</script>
+</body>
+</html>

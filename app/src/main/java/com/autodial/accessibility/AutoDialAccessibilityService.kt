@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.autodial.data.db.entity.RecipeStep
@@ -20,6 +21,7 @@ class AutoDialAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: AutoDialAccessibilityService? = null
             private set
+        private const val TAG = "AutoDial"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -66,6 +68,7 @@ class AutoDialAccessibilityService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 val pkg = event.packageName?.toString() ?: return
+                Log.d(TAG, "WINDOW_STATE_CHANGED pkg=$pkg cls=${event.className} activeTarget=$activeTargetPackage")
                 if (pkg == activeTargetPackage) {
                     scope.launch { _runEvents.emit(RunEvent.TargetForegrounded(pkg)) }
                 } else if (activeTargetPackage != null) {
@@ -81,6 +84,14 @@ class AutoDialAccessibilityService : AccessibilityService() {
 
     fun startRecording(stepId: String, targetPackage: String) {
         recorder?.startCapturing(stepId, targetPackage)
+    }
+
+    fun startRecordingSequence(
+        stepIds: List<String>,
+        targetPackage: String,
+        digitAutoMode: Boolean = false
+    ) {
+        recorder?.startCapturing(stepIds, targetPackage, digitAutoMode)
     }
 
     fun stopRecording() {
@@ -103,6 +114,21 @@ class AutoDialAccessibilityService : AccessibilityService() {
         return player?.executeStep(step)
             ?: StepOutcome.Failed("failed:service-not-ready")
     }
+
+    suspend fun longPressStep(step: RecipeStep, durationMs: Long): StepOutcome {
+        return player?.longPressStep(step, durationMs)
+            ?: StepOutcome.Failed("failed:service-not-ready")
+    }
+
+    suspend fun tapByResourceId(resourceId: String): StepOutcome {
+        return player?.tapByResourceId(resourceId)
+            ?: StepOutcome.Failed("failed:service-not-ready")
+    }
+
+    // Exposed so the run service can poll the live accessibility tree while
+    // waiting for a recorded node to become reachable (splash → real UI).
+    fun rootNode(): android.view.accessibility.AccessibilityNodeInfo? = rootInActiveWindow
+
 
     // ── Self-check ──────────────────────────────────────────────────────────
 

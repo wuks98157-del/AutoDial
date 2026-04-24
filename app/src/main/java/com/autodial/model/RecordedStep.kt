@@ -13,5 +13,9 @@ data class RecordedStep(
     val recordedOnDensityDpi: Int,
     val recordedOnScreenW: Int,
     val recordedOnScreenH: Int,
-    val missingResourceId: Boolean  // true = warn in wizard UI
+    val missingResourceId: Boolean,  // true = warn in wizard UI
+    // In RECORD_DIGITS, true means the tapped node exposed digit text and we
+    // derived the DIGIT_X label from it (order-independent). False means we fell
+    // back to tap order — user MUST tap 0,1,…,9 in sequence for labels to match.
+    val digitAutoDetected: Boolean = false
 )

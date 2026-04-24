@@ -54,26 +54,83 @@ fun WizardScreen(
             if (state.showMissingIdWarning) {
                 Surface(color = YellowWarn.copy(alpha = 0.15f), shape = MaterialTheme.shapes.medium) {
                     Text(
-                        "This button didn't expose a resource ID. AutoDial will rely on text + coordinates, which may be less stable if the app updates.",
+                        "One or more buttons didn't expose a resource ID. AutoDial will fall back to class + coordinates, which may be less stable if the app updates.",
                         modifier = Modifier.padding(12.dp),
                         color = YellowWarn
                     )
                 }
             }
 
+            state.duplicateWarning?.let { warning ->
+                Surface(color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f), shape = MaterialTheme.shapes.medium) {
+                    Text(
+                        warning,
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
+            val isDigitStep = state.currentStepId == RECORD_DIGITS
+            val digitsAllCaptured = isDigitStep && state.capturedDigits.size >= DIGIT_STEP_IDS.size
+
+            if (isDigitStep && state.isRecording) {
+                val captured = state.capturedDigits
+                val missing = (0..9).filterNot { it in captured }
+                val fallback = state.allDigitsAutoDetected == false
+                val hint = when {
+                    captured.isEmpty() -> "Tap any digit on the dial pad to begin."
+                    fallback -> "Labels not readable — tapping ORDER matters now. Tap next digit: ${missing.firstOrNull() ?: 0}"
+                    else -> "Tap the remaining digits in any order."
+                }
+                Text(
+                    hint,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    "Captured: ${if (captured.isEmpty()) "—" else captured.sorted().joinToString(", ")}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (missing.isNotEmpty()) {
+                    Text(
+                        "Still need: ${missing.joinToString(", ")}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { captured.size.toFloat() / DIGIT_STEP_IDS.size },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             Spacer(Modifier.weight(1f))
 
-            if (state.lastCaptured == null) {
+            val readyToAdvance = digitsAllCaptured || (!isDigitStep && state.lastCaptured != null)
+
+            if (!readyToAdvance) {
                 Button(
                     onClick = { vm.startRecording() },
-                    enabled = !state.isRecording,
+                    enabled = !state.isRecording && !state.isAutoWiping,
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),
                     modifier = Modifier.fillMaxWidth().height(56.dp)
                 ) {
-                    Text(if (state.isRecording) "Waiting for tap…" else "Start Recording")
+                    Text(
+                        when {
+                            state.isAutoWiping -> "Clearing dial pad…"
+                            isDigitStep && state.isRecording -> "Waiting for digits…"
+                            !isDigitStep && state.isRecording -> "Waiting for tap…"
+                            else -> "Start Recording"
+                        }
+                    )
                 }
             } else {
-                Text("Captured: step '${state.lastCaptured!!.stepId}'", color = GreenOk)
+                Text(
+                    if (isDigitStep) "✓ All 10 digits captured"
+                    else "Captured: step '${state.lastCaptured!!.stepId}'",
+                    color = GreenOk
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = { vm.reRecord() },
@@ -81,6 +138,7 @@ fun WizardScreen(
                     ) { Text("Re-record") }
                     Button(
                         onClick = { vm.confirmAndAdvance() },
+                        enabled = state.duplicateWarning == null,
                         colors = ButtonDefaults.buttonColors(containerColor = Orange),
                         modifier = Modifier.weight(1f)
                     ) { Text("Next →") }
