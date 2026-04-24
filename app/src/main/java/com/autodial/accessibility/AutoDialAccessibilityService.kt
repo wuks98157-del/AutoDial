@@ -8,15 +8,23 @@ import android.util.Log
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.autodial.data.db.entity.RecipeStep
+import com.autodial.data.repository.RecipeRepository
 import com.autodial.model.RecordedStep
 import com.autodial.model.RunEvent
 import com.autodial.model.RunParams
+import com.autodial.overlay.WizardOverlayController
+import com.autodial.wizard.*
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
+@AndroidEntryPoint
 class AutoDialAccessibilityService : AccessibilityService() {
+
+    @Inject lateinit var recipeRepo: RecipeRepository
 
     companion object {
         @Volatile var instance: AutoDialAccessibilityService? = null
@@ -37,6 +45,12 @@ class AutoDialAccessibilityService : AccessibilityService() {
     private var player: UiPlayer? = null
 
     @Volatile private var activeTargetPackage: String? = null
+
+    private var wizardStateMachine: WizardStateMachine? = null
+    private var wizardOverlay: WizardOverlayController? = null
+    private var recipeWriter: WizardRecipeWriter? = null
+    @Volatile private var wizardActivePackage: String? = null
+    @Volatile private var lastCapturedForSave: Map<String, com.autodial.model.RecordedStep>? = null
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -68,11 +82,17 @@ class AutoDialAccessibilityService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 val pkg = event.packageName?.toString() ?: return
-                Log.d(TAG, "WINDOW_STATE_CHANGED pkg=$pkg cls=${event.className} activeTarget=$activeTargetPackage")
+                Log.d(TAG, "WINDOW_STATE_CHANGED pkg=$pkg cls=${event.className} activeTarget=$activeTargetPackage wizardActive=$wizardActivePackage")
                 if (pkg == activeTargetPackage) {
                     scope.launch { _runEvents.emit(RunEvent.TargetForegrounded(pkg)) }
                 } else if (activeTargetPackage != null) {
                     scope.launch { _runEvents.emit(RunEvent.TargetBackgrounded(activeTargetPackage!!)) }
+                }
+                val wizSm = wizardStateMachine
+                val wizPkg = wizardActivePackage
+                if (wizSm != null && wizPkg != null) {
+                    if (pkg == wizPkg) wizSm.onEvent(WizardEvent.TargetForegrounded)
+                    else wizSm.onEvent(WizardEvent.TargetBackgrounded)
                 }
             }
             AccessibilityEvent.TYPE_VIEW_CLICKED -> recorder?.onEvent(event)
@@ -129,6 +149,126 @@ class AutoDialAccessibilityService : AccessibilityService() {
     // waiting for a recorded node to become reachable (splash → real UI).
     fun rootNode(): android.view.accessibility.AccessibilityNodeInfo? = rootInActiveWindow
 
+
+    // ── Wizard Mode API ─────────────────────────────────────────────────────
+
+    fun beginWizard(targetPackage: String) {
+        if (wizardStateMachine != null) return
+        val sm = WizardStateMachine()
+        val overlay = WizardOverlayController(this)
+        val writer = WizardRecipeWriter(applicationContext, recipeRepo)
+        wizardStateMachine = sm
+        wizardOverlay = overlay
+        recipeWriter = writer
+        wizardActivePackage = targetPackage
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
+            ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (launchIntent != null) applicationContext.startActivity(launchIntent)
+
+        overlay.show(
+            onUndo = { sm.onCommand(WizardCommand.Undo) },
+            onCancel = { sm.onCommand(WizardCommand.Cancel) },
+            onReRecord = { sm.onCommand(WizardCommand.ReRecord) },
+            onRetrySave = {
+                val snap = lastCapturedForSave ?: return@show
+                scope.launch { runSave(writer, targetPackage, snap, sm) }
+            }
+        )
+        sm.onCommand(WizardCommand.Start(targetPackage))
+
+        // Collect captures from UiRecorder into the state machine.
+        scope.launch {
+            recorder?.capturedSteps?.collect { recorded ->
+                sm.onEvent(WizardEvent.Captured(recorded))
+            }
+        }
+        // Subscribe to state flow: re-render overlay, re-arm UiRecorder, dismiss on terminal.
+        scope.launch {
+            sm.state.collect { state ->
+                overlay.updateState(state)
+                when (state) {
+                    is WizardState.Step ->
+                        recorder?.startCapturing(state.queue, state.targetPackage)
+                    is WizardState.AwaitingReturn ->
+                        recorder?.stopCapturing()
+                    WizardState.Cancelled, is WizardState.Completed -> {
+                        if (state is WizardState.Completed && state.recipeSaved == true) {
+                            kotlinx.coroutines.delay(2000L)
+                        }
+                        endWizard()
+                    }
+                    else -> {}
+                }
+            }
+        }
+        // Subscribe to side-effect channel: autoWipe + save.
+        scope.launch {
+            sm.sideEffects.collect { effect ->
+                when (effect) {
+                    is WizardSideEffect.AutoWipeDialPad ->
+                        autoWipeDialPad(effect.clearStep, effect.targetPackage)
+                    is WizardSideEffect.SaveRecipe -> {
+                        lastCapturedForSave = effect.captured
+                        runSave(writer, effect.targetPackage, effect.captured, sm)
+                    }
+                }
+            }
+        }
+    }
+
+    fun endWizard() {
+        wizardOverlay?.dismiss()
+        wizardOverlay = null
+        wizardStateMachine = null
+        recipeWriter = null
+        wizardActivePackage = null
+        lastCapturedForSave = null
+        recorder?.stopCapturing()
+    }
+
+    private suspend fun runSave(
+        writer: WizardRecipeWriter,
+        targetPackage: String,
+        captured: Map<String, com.autodial.model.RecordedStep>,
+        sm: WizardStateMachine
+    ) {
+        try {
+            writer.save(targetPackage, captured)
+            sm.onEvent(WizardEvent.RecipeSaveResult(success = true))
+        } catch (e: Exception) {
+            sm.onEvent(WizardEvent.RecipeSaveResult(success = false, error = e.message))
+        }
+    }
+
+    // Taps the recorded CLEAR_DIGITS node ~15× to empty the dial pad after the
+    // user's single capture-tap. Same logic as the old WizardViewModel.autoWipeDialPad
+    // — moved here because the service now owns wizard side-effects.
+    private fun autoWipeDialPad(
+        clear: com.autodial.model.RecordedStep,
+        targetPackage: String
+    ) {
+        val step = com.autodial.data.db.entity.RecipeStep(
+            targetPackage = targetPackage, stepId = "CLEAR_DIGITS",
+            resourceId = clear.resourceId, text = clear.text, className = clear.className,
+            boundsRelX = clear.boundsRelX, boundsRelY = clear.boundsRelY,
+            boundsRelW = clear.boundsRelW, boundsRelH = clear.boundsRelH,
+            screenshotHashHex = clear.screenshotHashHex,
+            recordedOnDensityDpi = clear.recordedOnDensityDpi,
+            recordedOnScreenW = clear.recordedOnScreenW,
+            recordedOnScreenH = clear.recordedOnScreenH
+        )
+        scope.launch {
+            val intent = packageManager.getLaunchIntentForPackage(targetPackage)
+                ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (intent != null) applicationContext.startActivity(intent)
+            kotlinx.coroutines.delay(500L)
+            repeat(15) {
+                executeStep(step)
+                kotlinx.coroutines.delay(120L)
+            }
+        }
+    }
 
     // ── Self-check ──────────────────────────────────────────────────────────
 
