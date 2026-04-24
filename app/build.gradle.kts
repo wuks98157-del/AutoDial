@@ -19,6 +19,26 @@ android {
         testInstrumentationRunner = "com.autodial.HiltTestRunner"
     }
 
+    // Release signing. If `keystore.properties` exists at repo root (gitignored),
+    // release builds are signed with the configured keystore. If not, release
+    // builds fall back to the debug signing config so `assembleRelease` still
+    // works for local smoke-testing. See TESTERS.md for how to generate a
+    // keystore + create keystore.properties.
+    signingConfigs {
+        create("release") {
+            val propsFile = rootProject.file("keystore.properties")
+            if (propsFile.exists()) {
+                val props = java.util.Properties().apply {
+                    propsFile.inputStream().use { load(it) }
+                }
+                storeFile = rootProject.file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isDebuggable = true
@@ -31,6 +51,10 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("boolean", "DEV_MENU_ENABLED", "false")
+            signingConfig = if (rootProject.file("keystore.properties").exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 

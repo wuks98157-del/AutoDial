@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.autodial.data.db.entity.Recipe
+import com.autodial.data.repository.HistoryRepository
 import com.autodial.data.repository.RecipeRepository
 import com.autodial.data.repository.SettingsRepository
 import com.autodial.model.RunParams
@@ -31,13 +32,15 @@ data class DialerUiState(
     val startBlockReason: String = "",
     val accessibilityEnabled: Boolean = true,
     val bizPhoneStale: Boolean = false,
-    val mobileVoipStale: Boolean = false
+    val mobileVoipStale: Boolean = false,
+    val recentNumbers: List<String> = emptyList(),
 )
 
 @HiltViewModel
 class DialerViewModel @Inject constructor(
     private val recipeRepo: RecipeRepository,
     private val settingsRepo: SettingsRepository,
+    private val historyRepo: HistoryRepository,
     private val permChecker: PermissionChecker,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -46,6 +49,14 @@ class DialerViewModel @Inject constructor(
     val state: StateFlow<DialerUiState> = _state.asStateFlow()
 
     init {
+        // Recent numbers — observed independently so the 4-flow combine stays
+        // focused on start-blocking state. `setNumber` is called by the chip
+        // tap path, which sets _state.value's `number` directly.
+        viewModelScope.launch {
+            historyRepo.observeRecentNumbers(limit = 5).collect { list ->
+                _state.update { it.copy(recentNumbers = list) }
+            }
+        }
         viewModelScope.launch {
             combine(
                 settingsRepo.settings,

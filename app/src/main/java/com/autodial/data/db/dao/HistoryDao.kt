@@ -27,4 +27,9 @@ interface HistoryDao {
 
     @Query("DELETE FROM runs WHERE endedAt < :beforeEpochMillis")
     suspend fun deleteOlderThan(beforeEpochMillis: Long)
+
+    // Distinct phone numbers from recent runs, ordered most-recent first.
+    // Powers the Dialer's "Recent" chip row so the user doesn't have to retype.
+    @Query("SELECT number FROM runs GROUP BY number ORDER BY MAX(startedAt) DESC LIMIT :limit")
+    fun observeRecentNumbers(limit: Int): Flow<List<String>>
 }

@@ -3,6 +3,7 @@ package com.autodial.ui.dialer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,6 +93,14 @@ fun DialerScreen(
                 }
 
                 PhoneNumberField(state.number, onChange = vm::setNumber)
+
+                if (state.recentNumbers.isNotEmpty()) {
+                    RecentNumbersRow(
+                        numbers = state.recentNumbers,
+                        current = state.number,
+                        onPick = vm::setNumber,
+                    )
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (!state.spamMode) {
@@ -263,6 +272,50 @@ private fun EditableField(
 private fun StaleBanner(message: String, tint: Color) {
     Surface(color = tint.copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)) {
         Text(message, modifier = Modifier.padding(12.dp), color = tint)
+    }
+}
+
+@Composable
+private fun RecentNumbersRow(
+    numbers: List<String>,
+    current: String,
+    onPick: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        AdLabel("Recent")
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            numbers.forEach { n ->
+                val active = n == current
+                Box(
+                    Modifier
+                        .background(
+                            if (active) Orange else SurfaceDark,
+                            RoundedCornerShape(999.dp),
+                        )
+                        .border(
+                            1.dp,
+                            if (active) Orange else BorderDark,
+                            RoundedCornerShape(999.dp),
+                        )
+                        .clickable { onPick(n) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        n,
+                        color = if (active) Color.Black else OnSurfaceDark,
+                        fontFamily = MonoFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.4.sp,
+                    )
+                }
+            }
+        }
     }
 }
 

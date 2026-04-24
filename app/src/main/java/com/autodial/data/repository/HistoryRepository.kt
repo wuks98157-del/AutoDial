@@ -23,4 +23,6 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
     suspend fun clearAll() = dao.deleteAll()
 
     suspend fun clearOlderThan(beforeEpochMillis: Long) = dao.deleteOlderThan(beforeEpochMillis)
+
+    fun observeRecentNumbers(limit: Int): Flow<List<String>> = dao.observeRecentNumbers(limit)
 }

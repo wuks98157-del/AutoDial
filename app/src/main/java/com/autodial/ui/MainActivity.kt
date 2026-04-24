@@ -37,24 +37,18 @@ class MainActivity : ComponentActivity() {
     private var startDest by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splash = installSplashScreen()
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         Log.i(TAG, "MainActivity.onCreate saved=${savedInstanceState != null}")
 
-        // The window background is pure black per themes.xml (splash theme).
-        // If anything on the path to first composition hangs or throws, the
-        // user sees a black screen until the process is force-killed. Every
-        // branch below MUST either set startDest or time-bail — and the
-        // Compose tree MUST render even when startDest hasn't resolved.
-        // Hard cap on splash — 1s is enough for the happy path and lets us
-        // paint Compose's dark Surface even if the settings load is still
-        // pending on a cold start.
-        val splashStart = System.currentTimeMillis()
-        splash.setKeepOnScreenCondition {
-            startDest == null && (System.currentTimeMillis() - splashStart) < 1000L
-        }
+        // No splash keep-condition: the splash dismisses on the first Compose
+        // frame. Compose renders Dialer immediately (via the startDest
+        // fallback below), so the user sees the app UI as fast as possible.
+        // DataStore is pre-warmed in AutoDialApplication.onCreate so the
+        // `settings.first()` call below usually completes within a few ms —
+        // no visible flash before startDest resolves.
         lifecycleScope.launch {
             Log.i(TAG, "MainActivity loading settings…")
             val t0 = System.currentTimeMillis()

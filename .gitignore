@@ -18,3 +18,8 @@ local.properties
 
 # Transient tool output
 autodial_events.txt
+
+# Release signing — keystore must never be committed
+keystore.properties
+*.keystore
+*.jks
