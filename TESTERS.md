@@ -1,4 +1,4 @@
-# AutoDial — Tester Guide (alpha 0.2.0)
+# AutoDial — Tester Guide (alpha 0.2.6)
 
 Thanks for helping test AutoDial. This is a **sideloaded, alpha-quality** Android app that automates repeated VoIP calls through BizPhone or Mobile VOIP. It is not on the Play Store.
 
@@ -28,16 +28,23 @@ Open AutoDial. You'll go through an 8-step setup:
 
 ## Using AutoDial
 
-1. Enter a phone number.
-2. Set cycles (how many times to dial).
-3. Set hang-up after (how long each call lasts in seconds).
-4. Pick the target (BizPhone or Mobile VOIP — tap "(SETUP)" if not recorded).
-5. Optional: toggle Spam mode (runs until stopped or hits the safety cap).
-6. Tap START. AutoDial switches to the target app and starts dialing.
-7. The overlay bubble shows the current cycle and countdown. Tap STOP on it or on the notification to end early.
+**Recommended workflow** (most reliable on Vivo / Oppo / older devices):
+
+1. **Open BizPhone (or Mobile VOIP) first** and tap into its dial pad screen.
+2. Switch to AutoDial.
+3. Enter a phone number.
+4. Set cycles (how many times to dial).
+5. Set hang-up after (how long each call lasts in seconds).
+6. Pick the target (BizPhone or Mobile VOIP — tap "(SETUP)" if not recorded).
+7. Optional: toggle Spam mode (runs until stopped or hits the safety cap).
+8. Tap START. AutoDial brings the target app forward (resuming the dial pad you left open) and starts dialing.
+9. The overlay bubble shows the current cycle and countdown. Tap STOP on it or on the notification to end early.
+
+If you skip step 1 and let AutoDial cold-launch the target app itself, runs still work — but you may see brief permission dialogs or splash screens on first launch which add a couple seconds and occasionally trip up the automation. Pre-opening the target is the safest path.
 
 ## Known limitations
 
+- **BizPhone's Bluetooth permission prompt (some Vivo / Oppo devices).** On first launch BizPhone may pop a system dialog asking for Bluetooth/Nearby-devices permission. Tap "Don't allow", then go to *Settings → Apps → BizPhone → Permissions → Nearby devices* and confirm it's set to "Don't allow". On some Vivo builds the dialog briefly reappears on every BizPhone launch even after this — AutoDial 0.2.5+ waits up to 5 seconds for the dialog to auto-dismiss before tapping. If a run fails with `failed:foreground-not-target:com.google.android.permissioncontroller`, that's this dialog still up — open BizPhone manually once, dismiss it, then re-run.
 - **Phone calls during a run.** If an actual incoming call arrives while AutoDial is running, the run may stall or fail. Safest to enable Do Not Disturb while testing.
 - **Screen off.** AutoDial tries to hold a wake lock, but some phones still dim/lock the screen aggressively. Keep the screen on for reliability.
 - **Target-app updates.** If BizPhone or Mobile VOIP updates, the recipe may become stale (a yellow banner on Dialer flags this). Re-record from Settings → Recipes.
@@ -62,6 +69,6 @@ Open AutoDial. You'll go through an 8-step setup:
 
 ## Version
 
-`app/build.gradle.kts` — `versionName = "0.2.0-alpha"`, `versionCode = 2`.
+`app/build.gradle.kts` — `versionName = "0.2.6-alpha"`, `versionCode = 8`.
 
 Check the installed version in Settings → About.

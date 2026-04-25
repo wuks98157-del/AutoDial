@@ -25,6 +25,7 @@ import com.autodial.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.selects.select
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -146,9 +147,21 @@ class RunForegroundService : Service() {
     ) {
         when (state) {
             is RunState.Preparing -> {
-                // Launch target app — we are foreground right now, so no BAL restriction
+                // Launch target app — we are foreground right now, so no BAL
+                // restriction. NEW_TASK only (no CLEAR_TASK): if the user had
+                // BizPhone already open on its dial pad, NEW_TASK brings that
+                // task to the front in its existing state, skipping the full
+                // splash/init flow. CLEAR_TASK would kill it and force a cold
+                // restart through LauncherActivity — which on Vivo re-triggers
+                // BizPhone's BLUETOOTH_CONNECT permission dialog every launch
+                // and adds ~1.5s of friction even when permissions are denied.
+                // For best results testers should open BizPhone on the dial
+                // pad before tapping START; if they don't, NEW_TASK still
+                // launches fresh as before and the existing
+                // waitForTargetForeground / isDialPadAlreadyOpen guards
+                // handle the splash flow.
                 val launchIntent = packageManager.getLaunchIntentForPackage(params.targetPackage)
-                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (launchIntent == null) {
                     stateMachine.onEvent(RunEvent.StepActionFailed("LAUNCH", "failed:target-not-installed"))
                     return
@@ -169,9 +182,47 @@ class RunForegroundService : Service() {
                 // real dial pad. The post-tap delay lets the open animation run.
                 Log.d(TAG, "OpeningDialPad: initial 800ms settle")
                 delay(800L)
-                waitForRecordedNode(state.params.targetPackage, "OPEN_DIAL_PAD", 2500L, accessService)
-                executeStep("OPEN_DIAL_PAD", state.params, accessService)
-                delay(400L)
+
+                // System dialogs (BizPhone's first-launch BLUETOOTH_CONNECT
+                // permission prompt on Vivo, OEM "are you sure?" prompts, etc.)
+                // can land on top of the target app right when we're about to
+                // tap. Their accessibility tree has none of our recorded
+                // resourceIds, so Tier 1/2 fail and Tier 3 raw-coord-taps land
+                // on the dialog's buttons. Wait for the target to actually own
+                // the foreground window before proceeding. ~5s is enough to
+                // outlast auto-dismissed permission dialogs (Vivo: ~1.5s).
+                if (!waitForTargetForeground(state.params.targetPackage, 5000L, accessService)) {
+                    val foregroundPkg = accessService.rootNode()?.packageName?.toString() ?: "unknown"
+                    Log.w(TAG, "OpeningDialPad: target not foreground after 5s — pkg=$foregroundPkg")
+                    stateMachine.onEvent(RunEvent.StepActionFailed(
+                        "OPEN_DIAL_PAD", "failed:foreground-not-target:$foregroundPkg"))
+                    return
+                }
+
+                // BizPhone (and likely Mobile VOIP) preserve their last-shown
+                // fragment across launches. After a run that ended on the dial
+                // pad, a subsequent run finds BizPhone with the dial pad ALREADY
+                // OPEN — and the keypad icon is a toggle, so tapping it then
+                // CLOSES the dial pad. Logcat from that failure mode: every
+                // DIGIT_X step finds zero nodes and falls to Tier 3 coord taps
+                // landing on whatever is underneath (call history items, the
+                // contacts tab). Detect "already open" via PRESS_CALL visibility
+                // and skip the toggle tap entirely.
+                if (isDialPadAlreadyOpen(state.params, accessService)) {
+                    Log.i(TAG, "OpeningDialPad: dial pad already open — " +
+                        "skipping OPEN_DIAL_PAD tap (would toggle it off)")
+                    historyRepo.logStepEvent(RunStepEvent(
+                        runId = runId, cycleIndex = currentCycle(), stepId = "OPEN_DIAL_PAD",
+                        at = System.currentTimeMillis(),
+                        outcome = "ok:already-open", detail = null
+                    ))
+                    stateMachine.onEvent(
+                        RunEvent.StepActionSucceeded("OPEN_DIAL_PAD", "ok:already-open"))
+                } else {
+                    waitForRecordedNode(state.params.targetPackage, "OPEN_DIAL_PAD", 2500L, accessService)
+                    executeStep("OPEN_DIAL_PAD", state.params, accessService)
+                    delay(400L)
+                }
             }
 
             is RunState.EnteringNumber -> {
@@ -192,30 +243,45 @@ class RunForegroundService : Service() {
             }
 
             is RunState.InCall -> {
-                val remaining = state.hangupAt - System.currentTimeMillis()
-                // Interruptible wait: returns early if handleStop() flips the
-                // state to HangingUp (user pressed STOP), or if the user pressed
-                // STOP during PressingCall and we landed here with stopRequested
-                // already set. Plain `delay(remaining)` ignored state changes,
-                // so STOP during a call used to do nothing for the full timer.
-                if (remaining > 0 && !stateMachine.isStopRequested()) {
-                    withTimeoutOrNull(remaining) {
-                        stateMachine.state.first { it !is RunState.InCall }
+                // Race the hangup timer against three exits:
+                //   1. STOP (state flips InCall→HangingUp) — fall through to hangup
+                //   2. Target ends the call on its own (dial pad reappears) —
+                //      skip hangup, synthesize HANG_UP success, advance cycle
+                //   3. Timer expiry — normal hangup path
+                // The existing code only handled #1 and #3. When BizPhone
+                // returned to its dial pad mid-timer (invalid number / recipient
+                // hung up), AutoDial sat there waiting, then tried clearCallButton
+                // on a screen where it no longer existed, and Failed the run.
+                val callEndedByTarget = waitForInCallToEnd(state, accessService)
+
+                if (callEndedByTarget) {
+                    Log.i(TAG, "InCall cycle=${state.cycle}: target returned to dial pad — " +
+                        "synthesizing HANG_UP success (skipping hangup tap)")
+                    // Flip to HangingUp first — handleStepSucceeded only routes
+                    // HANG_UP success when state is HangingUp.
+                    stateMachine.markHangingUp()
+                    historyRepo.logStepEvent(RunStepEvent(
+                        runId = runId, cycleIndex = currentCycle(), stepId = "HANG_UP",
+                        at = System.currentTimeMillis(),
+                        outcome = "ok:call-ended-by-target", detail = null
+                    ))
+                    stateMachine.onEvent(
+                        RunEvent.StepActionSucceeded("HANG_UP", "ok:call-ended-by-target"))
+                } else {
+                    stateMachine.markHangingUp()
+                    when (val strategy = TargetApps.hangupStrategy(state.params.targetPackage)) {
+                        is TargetApps.HangupStrategy.AutoHangupById ->
+                            autoHangup(strategy.resourceId, accessService)
+                        TargetApps.HangupStrategy.ReuseCallButton ->
+                            // Mobile VOIP: the end-call view is different from the dial-pad call
+                            // button but sits at the same location and size, so replaying the
+                            // recorded PRESS_CALL step (Tier-3 coord fallback if needed) reaches
+                            // the hangup view during an active call. History still records this
+                            // as HANG_UP for diagnostics.
+                            executeStep("PRESS_CALL", state.params, accessService, logicalStepId = "HANG_UP")
+                        TargetApps.HangupStrategy.RecordedStep ->
+                            executeStep("HANG_UP", state.params, accessService)
                     }
-                }
-                stateMachine.markHangingUp()
-                when (val strategy = TargetApps.hangupStrategy(state.params.targetPackage)) {
-                    is TargetApps.HangupStrategy.AutoHangupById ->
-                        autoHangup(strategy.resourceId, accessService)
-                    TargetApps.HangupStrategy.ReuseCallButton ->
-                        // Mobile VOIP: the end-call view is different from the dial-pad call
-                        // button but sits at the same location and size, so replaying the
-                        // recorded PRESS_CALL step (Tier-3 coord fallback if needed) reaches
-                        // the hangup view during an active call. History still records this
-                        // as HANG_UP for diagnostics.
-                        executeStep("PRESS_CALL", state.params, accessService, logicalStepId = "HANG_UP")
-                    TargetApps.HangupStrategy.RecordedStep ->
-                        executeStep("HANG_UP", state.params, accessService)
                 }
                 // inter-cycle settle — short pause after hangup before the
                 // next cycle's PressingCall. waitForRecordedNode(PRESS_CALL)
@@ -386,6 +452,118 @@ class RunForegroundService : Service() {
         }
     }
 
+    // Race the hangup-timer wait against polling for the target app's dial pad
+    // returning. Returns true if the dial pad reappeared (call ended on the
+    // target's side — invalid number, recipient hung up, network drop) so the
+    // caller can skip the hangup tap and synthesize a HANG_UP success.
+    // Returns false on timer expiry or STOP — caller does its normal hangup.
+    //
+    // Detection signal: the recorded PRESS_CALL node becoming visible again.
+    // While the in-call activity is foreground, that node is unreachable; when
+    // the target returns to its dial pad, it reappears. Gated by
+    // TargetApps.detectsCallEndByDialPad — Mobile VOIP shares the call/end-call
+    // view, so visibility there doesn't disambiguate state.
+    private suspend fun waitForInCallToEnd(
+        state: RunState.InCall,
+        accessService: AutoDialAccessibilityService
+    ): Boolean = coroutineScope {
+        val remaining = state.hangupAt - System.currentTimeMillis()
+        if (remaining <= 0 || stateMachine.isStopRequested()) return@coroutineScope false
+
+        val pressCallRid: String? = recipeRepo.getSteps(state.params.targetPackage)
+            .firstOrNull { it.stepId == "PRESS_CALL" }?.resourceId
+            ?.takeIf { TargetApps.detectsCallEndByDialPad(state.params.targetPackage) }
+
+        // Timer arm: existing wait — completes on timeout, on STOP flipping the
+        // state away from InCall, or on driveState advancing past InCall for
+        // any other reason. Always returns false (timer/STOP path).
+        val timerJob = async {
+            withTimeoutOrNull(remaining) {
+                stateMachine.state.first { it !is RunState.InCall }
+            }
+            false
+        }
+
+        // Detection arm: poll the live a11y tree for PRESS_CALL becoming
+        // visible. The 2s settle prevents false positives during the in-call
+        // activity's enter animation, when the dial pad surface beneath can
+        // still report visible briefly.
+        val watchJob = pressCallRid?.let { rid ->
+            async {
+                delay(2000L)
+                while (isActive) {
+                    val root = accessService.rootNode()
+                    val hits = root?.findAccessibilityNodeInfosByViewId(rid) ?: emptyList()
+                    if (hits.any { it.isVisibleToUser }) {
+                        Log.i(TAG, "InCall watcher: PRESS_CALL visible — call ended by target")
+                        return@async true
+                    }
+                    delay(400L)
+                }
+                false
+            }
+        }
+
+        val result = if (watchJob != null) {
+            select<Boolean> {
+                timerJob.onAwait { it }
+                watchJob.onAwait { it }
+            }
+        } else {
+            timerJob.await()
+        }
+        timerJob.cancel()
+        watchJob?.cancel()
+        result
+    }
+
+    // Poll until the foreground accessibility window's package matches the
+    // target. Returns true on match, false on timeout. Used to outlast
+    // transient system dialogs (BizPhone's first-launch BLUETOOTH_CONNECT
+    // prompt on Vivo, OEM "are you sure?" prompts, the system "open with"
+    // chooser, etc.) that land on top of the target right when we're about
+    // to start tapping. Without this guard, Tier-3 coord taps land on the
+    // dialog's buttons.
+    private suspend fun waitForTargetForeground(
+        target: String,
+        timeoutMs: Long,
+        accessService: AutoDialAccessibilityService
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var lastSeen: String? = null
+        while (System.currentTimeMillis() < deadline) {
+            val pkg = accessService.rootNode()?.packageName?.toString()
+            if (pkg == target) {
+                if (lastSeen != null && lastSeen != target) {
+                    Log.i(TAG, "waitForTargetForeground: $target reached (was $lastSeen)")
+                }
+                return true
+            }
+            if (pkg != lastSeen) {
+                Log.d(TAG, "waitForTargetForeground: foreground=$pkg (waiting for $target)")
+                lastSeen = pkg
+            }
+            delay(200L)
+        }
+        return false
+    }
+
+    // True if the recorded PRESS_CALL node is currently visible — used as a
+    // sentinel for "the dial pad fragment is already showing". When true, the
+    // OpeningDialPad driver skips the OPEN_DIAL_PAD tap to avoid toggling the
+    // dial pad off on apps where the keypad icon is a toggle.
+    private suspend fun isDialPadAlreadyOpen(
+        params: RunParams,
+        accessService: AutoDialAccessibilityService
+    ): Boolean {
+        val sentinelRid = recipeRepo.getSteps(params.targetPackage)
+            .firstOrNull { it.stepId == "PRESS_CALL" }?.resourceId
+            ?: return false
+        val root = accessService.rootNode() ?: return false
+        val hits = root.findAccessibilityNodeInfosByViewId(sentinelRid) ?: return false
+        return hits.any { it.isVisibleToUser }
+    }
+
     private suspend fun waitForRecordedNode(
         targetPackage: String,
         stepId: String,
@@ -422,7 +600,11 @@ class RunForegroundService : Service() {
             currentRunRecord?.let { record ->
                 historyRepo.updateRun(record.copy(
                     endedAt = System.currentTimeMillis(),
-                    completedCycles = currentCycle(),
+                    // Read from the state machine's HANG_UP-success counter,
+                    // not currentCycle() — by the time finishRun runs, the
+                    // state has already transitioned to Failed/Completed/
+                    // StoppedByUser and currentCycle() returns 0.
+                    completedCycles = stateMachine.completedCycles(),
                     status = status,
                     failureReason = reason
                 ))

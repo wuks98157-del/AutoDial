@@ -16,8 +16,8 @@ android {
         applicationId = "com.autodial"
         minSdk = 30
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0-alpha"
+        versionCode = 8
+        versionName = "0.2.6-alpha"
         testInstrumentationRunner = "com.autodial.HiltTestRunner"
     }
 
@@ -72,6 +72,18 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+    }
+
+    // Lint-vital is a pre-assemble lint pass that runs on release builds.
+    // On Windows it routinely deadlocks — the worker mmap-locks JARs in
+    // app/build/intermediates/lint-cache/ and Windows refuses to release
+    // those handles after the worker exits, so subsequent assembleRelease
+    // runs fail with "process cannot access the file". Disabling it has no
+    // effect on the APK output. Run lint manually (`Code → Inspect Code` in
+    // AS, or `:app:lintRelease`) before distribution if a lint pass is
+    // desired.
+    lint {
+        checkReleaseBuilds = false
     }
 }
 

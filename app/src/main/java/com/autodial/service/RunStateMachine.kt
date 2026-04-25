@@ -17,7 +17,16 @@ class RunStateMachine {
     // otherwise STOP during InCall silently hangs up and keeps looping.
     private var stopRequested = false
 
+    // Successful HANG_UP outcomes since this run started. Drives
+    // RunRecord.completedCycles, which finishRun() must read at terminal time —
+    // currentCycle() reads the live state and returns 0 for terminal states,
+    // so it always under-counted (history showed 0/N for both clean and
+    // mid-run-stopped runs).
+    private var completedCycles = 0
+
     fun isStopRequested(): Boolean = stopRequested
+
+    fun completedCycles(): Int = completedCycles
 
     fun onCommand(cmd: RunCommand) {
         when (cmd) {
@@ -25,6 +34,7 @@ class RunStateMachine {
                 if (_state.value !is RunState.Idle) return
                 runId = cmd.runId
                 stopRequested = false
+                completedCycles = 0
                 _state.value = RunState.Preparing(cmd.params)
             }
             RunCommand.Stop -> handleStop()
@@ -63,6 +73,10 @@ class RunStateMachine {
                     System.currentTimeMillis() + s.params.hangupSeconds * 1000L)
 
             stepId == "HANG_UP" && s is RunState.HangingUp -> {
+                // Cycle index is 0-based; a successful HANG_UP means cycle
+                // s.cycle is fully done, so the count of completed cycles
+                // becomes s.cycle + 1.
+                completedCycles = s.cycle + 1
                 if (stopRequested) {
                     RunState.StoppedByUser(runId)
                 } else {
